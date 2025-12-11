@@ -1,0 +1,6 @@
+scripts/*.png
+TEASER-plusplus/ 
+./scripts/temp.py
+.python-version
+pyproject.toml
+uv.lock
