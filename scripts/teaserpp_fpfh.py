@@ -2,6 +2,7 @@ import argparse
 import logging
 import os
 from registration.utils.logging import setup_logging
+import json
 
 import open3d as o3d
 from registration.visualization.viewer import *
@@ -24,8 +25,7 @@ def prepare_dataset(
     correction: np.ndarray = np.identity(4),
 ) -> tuple:
     """Load and prepare point cloud datasets for registration.
-    Eu estive aqui. 
-    EU SEI
+    
     Loads source and target downsampled point clouds, applies an initial transformation
     to the source cloud, and preprocesses both clouds by computing
     FPFH features for feature-based registration.
@@ -140,6 +140,7 @@ def refine_registration(
 def teaserpp_registration(args: argparse.Namespace):
     # Load and visualize two point clouds
     source_raw = o3d.io.read_point_cloud(args.source)
+    source_json = args.source.replace('.ply', '.json').replace('.pcd', '.json')
     target_raw = o3d.io.read_point_cloud(args.target)
     VOXEL_SIZE = args.voxel_size
     VISUALIZE = args.viz
@@ -260,19 +261,17 @@ def teaserpp_registration(args: argparse.Namespace):
         f"Result fitness: {icp_sol.fitness}, inlier RMSE: {icp_sol.inlier_rmse}"
     )
 
+    # Load Ground Thruth transformation from .json file
+    try:
+        with open(source_json, 'r') as file:
+            source_gt_transform = np.array(json.load(file)["H"])
+            logger.info(f"Source Ground Truth transform = {source_gt_transform}")
+    except FileNotFoundError:
+        logger.error(f"The file '{source_json}' was not found.")
     # NB this only make sense if you are aligning the same model
     # difference between initial and final transformation
-    frame_size = 1
-    trans_init = np.asarray(
-            [
-                [1, 0, 0, 0 * frame_size],
-                [0, 1, 0, -1 * frame_size],
-                [0, 0, 1, 1 * frame_size],
-                [0.0, 0.0, 0.0, 1.0],
-            ]
-        )
     rot_err, trans_err = transformation_error(
-        icp_sol.transformation, np.linalg.inv(trans_init) # TODO: change to .json matrix
+        icp_sol.transformation, np.linalg.inv(source_gt_transform) # TODO: change to .json matrix
     )
     logger.info(
         f"Rotation error (radians): {rot_err:.4f} (degrees: {np.degrees(rot_err):.4f}), Translation error: {trans_err:.4f}"
