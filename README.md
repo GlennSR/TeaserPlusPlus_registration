@@ -69,19 +69,10 @@ Notes:
 - If you enable `--viz True` the script will open Open3D visualizers and show images for each step of the registration
 - Metrics are written into a JSON file next to your source file under a `metrics/` directory. The JSON includes the estimated transformation, fitness, inlier RMSE and other diagnostics.
 
-Minimal example GIFs
----------------------
-Place two overview GIFs (or animated PNGs) in this folder or in a `docs/gifs/` subfolder and name them exactly so the README displays them:
-
-- `docs/gifs/initial_state.gif` — a short capture of the first Open3D view: "Initial State"
-- `docs/gifs/registration_result.gif` — capture of the final Open3D view: "Registration Result" (TEASER++ + ICP)
-
-Example markdown to include these in the README once you add them:
-
 ```markdown
-![Initial State](docs/gifs/initial_state.gif)
+![Initial State](https://github.com/GlennSR/TeaserPlusPlus_registration/tree/main/docs/gifs/initial_state.gif)
 
-![Registration Result](docs/gifs/registration_result.gif)
+![Registration Result](https://github.com/GlennSR/TeaserPlusPlus_registration/tree/main/docs/gifs/registration_result.gif)
 ```
 
 Troubleshooting & tips
