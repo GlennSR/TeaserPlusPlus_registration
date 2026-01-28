@@ -1,0 +1,6 @@
+FOR TEASER++
+
+Diagonal length of PC = 5026.32 mm
+Voxel size: 15, 30, 50 (0,3%; 0,6%; 1%)
+
+Noise std: 0; 0.01; 0.025; 0.05

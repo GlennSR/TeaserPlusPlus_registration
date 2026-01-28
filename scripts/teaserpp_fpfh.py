@@ -1,19 +1,21 @@
 import argparse
 import logging
 import os
+import time
 from registration.utils.logging import setup_logging
 import json
 
 import open3d as o3d
+import matplotlib.pyplot as plt
 from registration.visualization.viewer import *
 import teaserpp_python
 import numpy as np 
 import copy
 from helpers import *
-from registration.utils.point_cloud import preprocess_point_cloud, align_centers_from_files, align_centers, rough_scale_point_cloud_from_file
-from registration.utils.transforms import (generate_random_rotation_matrix,
-    transformation_error,
-    gravity_transformation)
+from registration.utils.point_cloud import preprocess_point_cloud, noise_Gaussian, rough_scale_point_cloud_from_file
+from registration.utils.transforms import apply_random_transform
+from registration.utils.solution_check import is_solution_upside_down
+from registration.utils.metrics import registration_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -31,32 +33,27 @@ def prepare_dataset(
     FPFH features for feature-based registration.
 
     Args:
-        source_down: Downsampled source point cloud.
-        target_down: Downsampled target point cloud.
+        source: The original source point cloud.
+        target: Downsampled target point cloud.
         voxel_size: The size of the voxel for downsampling both point clouds.
         trans_init: Initial transformation matrix to apply to the source cloud (default: identity matrix).
         correction: Correction transformation matrix to apply to both clouds, typically to align to the visual reference frame (default: identity matrix).
 
     Returns:
         A tuple containing:
+            - source: The original source point cloud with initial transformation applied
+            - target: The original target point cloud
             - source_down: Downsampled source point cloud
             - target_down: Downsampled target point cloud
             - source_fpfh: FPFH features of the downsampled source
             - target_fpfh: FPFH features of the downsampled target
     """
-    #logger.info("Load two point clouds and disturb initial pose")
     
     source.transform(correction)
     
     target.transform(correction)
 
     source.transform(trans_init)
-
-    # transf = align_centers(source_down, target_down, np.eye(4), np.eye(4))
-    # trans_init = transf @ trans_init
-    # print(f"transf: {transf} \ntrans_init: {trans_init}")
-    
-    # source_down.transform(transf)
 
     logger.info("Preprocessing source point cloud")
     source_down, source_fpfh = preprocess_point_cloud(logger, source, voxel_size)
@@ -69,29 +66,6 @@ def prepare_dataset(
     logger.info(f"Feature of TARGET: {target_fpfh}")
 
     return source, target, source_down, target_down, source_fpfh, target_fpfh
-
-def is_solution_upside_down(transformation: np.ndarray, idx_gravity_axis: int) -> bool:
-    """Check if the given transformation results in an upside-down alignment.
-
-    This function examines the rotation component of the provided transformation
-    matrix to determine if the direction corresponding to the specified gravity axis
-    is inverted (i.e., points in the opposite direction). This can be useful for
-    validating registration results against expected orientations.
-
-    Args:
-        transformation: A 4x4 transformation matrix to evaluate.
-        idx_gravity_axis: The index of the gravity axis (0 for x, 1 for y, 2 for z).
-    Returns:
-        True if the solution is upside down, False otherwise.
-    Raises:
-        ValueError: If idx_gravity_axis is not 0, 1, or 2.
-    """
-    if idx_gravity_axis < 0 or idx_gravity_axis > 2:
-        raise ValueError("idx_gravity_axis must be 0 (x), 1 (y), or 2 (z)")
-
-    gravity = np.eye(3)[:, idx_gravity_axis]
-    direction = transformation[:3, :3] @ gravity
-    return np.dot(direction, gravity) < 0
 
 def refine_registration(
     source: o3d.geometry.PointCloud,
@@ -140,47 +114,31 @@ def refine_registration(
 def teaserpp_registration(args: argparse.Namespace):
     # Load and visualize two point clouds
     source_raw = o3d.io.read_point_cloud(args.source)
-    source_json = args.source.replace('.ply', '.json').replace('.pcd', '.json')
     target_raw = o3d.io.read_point_cloud(args.target)
+    noise_std = args.noise_std * 1000 # scale to match point cloud units in mm
     VOXEL_SIZE = args.voxel_size
     VISUALIZE = args.viz
 
     source_raw.paint_uniform_color([0.0, 0.0, 1.0]) # show source in blue
     target_raw.paint_uniform_color([1.0, 0.0, 0.0]) # show target in red
-    frame_size = rough_scale_point_cloud_from_file(args.target)
+    frame_size = rough_scale_point_cloud_from_file(args.target) # scale frame size according to target to plot the axis in open3D Draw function
 
     if VISUALIZE:
         draw_registration_result(source_raw, target_raw, np.eye(4), window_name="Initial State (Source: Blue, Target: Red)", size=frame_size)
 
-    trans_init = np.asarray(
-            [
-                [0.862, 0.011, -0.507, 3.10005 * frame_size],
-                [-0.139, 0.967, -0.215, 3.51007 * frame_size],
-                [0.487, 0.255, 0.835, -0.4 * frame_size],
-                [0.0, 0.0, 0.0, 1.0],
-            ]
-        )
+    # Add a random gaussian noise chosen by the user to the source point cloud
+    source_raw.points = o3d.utility.Vector3dVector(noise_Gaussian(np.asarray(source_raw.points), noise_std))
 
-    trans_init[:3, :3] = generate_random_rotation_matrix()
-    trans_init = np.eye(4)
+    # if VISUALIZE:
+    #     draw_registration_result(source_raw, target_raw, np.eye(4), window_name="Noisy source", size=frame_size)
 
-    # supposing that we know an estimation of the gravity vector (e.g. along the y-axis/up vector)
-    # we can try to use it to align the point clouds so that y-axis is aligned
-    # here we use the y vector of the initial transformation and perturb it a bit to simulate the
-    # direction of the gravity
-    idx_gravity_axis = 1
+    # Initiate timer
+    start_time = time.time()
 
-    gravity_transform = gravity_transformation(
-        trans_init[:3, idx_gravity_axis], gravity_axis=idx_gravity_axis
-    )
-    trans_init = gravity_transform @ trans_init
-
-    trans_init = (
-        align_centers_from_files(args.source, args.target, trans_init, np.eye(4))
-        @ trans_init
-    )
+    # idx_gravity_axis = 1 # assuming y-axis is the gravity axis
+    # apply_random_transform(args.source, args.target, frame_size, idx_gravity_axis)
     
-    logger.debug(f"axis aligned:\n{trans_init @ np.eye(4)[:, idx_gravity_axis]}")
+    trans_init = np.eye(4) # Don't change the source initial transformation, as we have loaded it from the ground truthfile
 
     source_raw, target_raw, source_down, target_down, source_feats, target_feats = prepare_dataset(source_raw, target_raw, VOXEL_SIZE, trans_init)
 
@@ -200,22 +158,21 @@ def teaserpp_registration(args: argparse.Namespace):
     num_corrs = source_corr.shape[1]
     logger.info(f'FPFH generates {num_corrs} putative correspondences.')
 
-    # ---- VISUALIZATION PURPOSE ONLY ----
     # visualize the point clouds together with feature correspondences
-    points = np.concatenate((source_corr.T,target_corr.T),axis=0)
-    lines = []
-    for i in range(num_corrs):
-        lines.append([i,i+num_corrs])
-    colors = [[0, 1, 0] for i in range(len(lines))] # lines are shown in green
-    line_set = o3d.geometry.LineSet(
-        points=o3d.utility.Vector3dVector(points),
-        lines=o3d.utility.Vector2iVector(lines),
-    )
-    line_set.colors = o3d.utility.Vector3dVector(colors)
     if VISUALIZE:
+        points = np.concatenate((source_corr.T,target_corr.T),axis=0)
+        lines = []
+        for i in range(num_corrs):
+            lines.append([i,i+num_corrs])
+        colors = [[0, 1, 0] for i in range(len(lines))] # lines are shown in green
+        line_set = o3d.geometry.LineSet(
+            points=o3d.utility.Vector3dVector(points),
+            lines=o3d.utility.Vector2iVector(lines),
+        )
+        line_set.colors = o3d.utility.Vector3dVector(colors)
         o3d.visualization.draw_geometries([source_raw, target_raw, line_set], window_name="FPFH Correspondences")
-    # ---- VISUALIZATION PURPOSE ONLY ----
 
+    # TEASER++ registration
     NOISE_BOUND = VOXEL_SIZE * 2 # 2 works well
     teaser_solver = get_teaser_solver(NOISE_BOUND)
     teaser_solver.solve(source_corr,target_corr)
@@ -223,31 +180,8 @@ def teaserpp_registration(args: argparse.Namespace):
     R_teaser = solution.rotation
     t_teaser = solution.translation
     T_teaser = Rt2T(R_teaser,t_teaser)
-    
-    # Log TEASER++ internal quality metrics
-    translation_inliers = teaser_solver.getTranslationInliers()
-    rotation_inliers = teaser_solver.getRotationInliers()
-    logger.info(f"TEASER++ Internal Metrics:")
-    logger.info(f"  Translation inliers: {translation_inliers} / {num_corrs} ({len(translation_inliers)/num_corrs*100:.1f}%)")
-    logger.info(f"  Rotation inliers (max clique): {len(rotation_inliers)} / {num_corrs} ({len(rotation_inliers)/num_corrs*100:.1f}%)")
-    logger.info(f"  Solution valid: {solution.valid if hasattr(solution, 'valid') else 'N/A'}")
-
-    # # Check if upside down
-    # if is_solution_upside_down(T_teaser, idx_gravity_axis):
-    #     logger.warning(f"TEASER++ attempt result is upside down, discarding.")
-    
-
-    # Evaluate the solution using Open3D
-    evaluation = o3d.pipelines.registration.evaluate_registration(
-        source_raw, target_raw, NOISE_BOUND, T_teaser
-    )
-    logger.info(f"Open3D Evaluation Metrics:")
-    logger.info(f"  Fitness: {evaluation.fitness:.4f} (fraction of inlier points)")
-    logger.info(f"  Inlier RMSE: {evaluation.inlier_rmse:.6f} (lower is better)")
-    logger.info(f"  Correspondence set size: {len(evaluation.correspondence_set)}")
         
-    # Visualize the registration results
-    source_raw_T_teaser = copy.deepcopy(source_raw).transform(T_teaser)
+    # Visualize the registration results after TEASER++
     if VISUALIZE:
         draw_registration_result(source_raw, target_raw, T_teaser, window_name="TEASER++ Registration Results", size=frame_size)
 
@@ -255,38 +189,18 @@ def teaserpp_registration(args: argparse.Namespace):
     icp_sol = refine_registration(source_raw, target_raw, NOISE_BOUND, T_teaser, max_iteration=args.max_iter_icp)
     T_icp = icp_sol.transformation
 
-    logger.info(f"ICP refinement result: {icp_sol}")
-    logger.info(f"Estimated matrix:\n{icp_sol.transformation}")
-    logger.info(
-        f"Result fitness: {icp_sol.fitness}, inlier RMSE: {icp_sol.inlier_rmse}"
-    )
-
-    # Load Ground Thruth transformation from .json file
-    try:
-        with open(source_json, 'r') as file:
-            source_gt_transform = np.array(json.load(file)["H"])
-            logger.info(f"Source Ground Truth transform = {source_gt_transform}")
-    except FileNotFoundError:
-        logger.error(f"The file '{source_json}' was not found.")
-    # NB this only make sense if you are aligning the same model
-    # difference between initial and final transformation
-    rot_err, trans_err = transformation_error(
-        icp_sol.transformation, np.linalg.inv(source_gt_transform) # TODO: change to .json matrix
-    )
-    logger.info(
-        f"Rotation error (radians): {rot_err:.4f} (degrees: {np.degrees(rot_err):.4f}), Translation error: {trans_err:.4f}"
-    )
+    # Computing elapsed time to run Teaser++ registration
+    end_time = time.time()
+    registration_total_time = end_time - start_time
+    logger.info(f"Elapsed time for TEASER++ Registration: {registration_total_time:.4f} seconds")
 
     # visualize the registration after ICP refinement
-    source_raw_T_icp = copy.deepcopy(source_raw).transform(T_icp)
     if VISUALIZE:
         draw_registration_result(source_raw, target_raw, T_icp, window_name="ICP Refinement", size=frame_size)
 
-    # Calculate the metric of the result transformation using Open3D compute_point_cloud_distance() method
-    distances_o3d = target_raw.compute_point_cloud_distance(source_raw_T_icp)
-    # logger.info(f"Distances for the registration result: {distances_o3d}")
-    logger.info(f"Mean Open3D distance for the registration result: {np.mean(distances_o3d):.6f}")
-
+    ## METRICS ##
+    # Calculate and save registration metrics
+    # registration_metrics(target_raw, source_raw, teaser_solver, icp_sol, num_corrs, NOISE_BOUND, registration_total_time, args)
 
 if __name__ == "__main__":
     # tutorial from here https://teaser.readthedocs.io/en/master/quickstart.html
@@ -294,10 +208,14 @@ if __name__ == "__main__":
     # add input file argument
     parser = argparse.ArgumentParser(description="Teaser++ registration")
     parser.add_argument("--source", type=str, help="source file path", required=True)
-    parser.add_argument("--target", type=str, help="taraget file path", required=True)
+    parser.add_argument("--target", type=str, help="target file path", required=True)
 
     parser.add_argument(
-        "--voxel-size", type=float, help="voxels size for downsampling", default=0.05
+        "--voxel-size", type=float, help="voxels size for downsampling", default=30
+    )
+
+    parser.add_argument(
+        "--noise-std", type=float, help="std deviation of gaussian noise to add to source", default=0.0
     )
     
     parser.add_argument(
@@ -309,7 +227,7 @@ if __name__ == "__main__":
         type=str,
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
         default="INFO",
-        help="Set logging level (default: WARNING)",
+        help="Set logging level (default: INFO)",
     )
     parser.add_argument(
         "--viz",
@@ -336,5 +254,6 @@ if __name__ == "__main__":
             teaserpp_registration(input_args)
             count += 1
     else:
+        source_dir, _ = os.path.split(input_args.source)
         teaserpp_registration(input_args)
 

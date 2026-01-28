@@ -3,6 +3,10 @@
 from typing import Tuple
 import numpy as np
 import numpy.typing as npt
+import logging
+from registration.utils.point_cloud import align_centers_from_files
+
+logger = logging.getLogger(__name__)
 
 def gravity_transformation(
     gravity_direction: np.ndarray, gravity_axis: int = 1
@@ -453,6 +457,59 @@ def random_small_rotation(sigma):
     # Rodrigues' formula: exp([axis]x)
     rot = np.eye(3) + np.sin(theta) * k_mat + (1 - np.cos(theta)) * (k_mat @ k_mat)
     return rot
+
+
+def apply_random_transform(
+        source_file: str = None, 
+        target_file: str = None,
+        frame_size: float = 1.0,
+        idx_gravity_axis: int = 1,
+        ):
+    '''
+    FOR TESTING PURPOSE ONLY IF YOU DON'T HAVE A GROUND TRUTH TRANSFORMATION
+    Apply a random transformation to the source point cloud to simulate an initial state
+    and then align it with the gravity vector (default y).
+    
+    trans_init: Initial transformation matrix to apply to the source cloud (default: identity matrix).
+    source_file: Path to the source point cloud file.
+    target_file: Path to the target point cloud file.
+    frame_size: Size of the coordinate frame axes.
+    idx_gravity_axis: Index of the gravity axis (default is 1 for y-axis).
+    '''
+
+    # --- FOR TESTING PURPOSE ONLY --- #
+    # USE IT IF YOU DON'T HAVE A GROUND TRUTH TRANSFORMATION
+    # Apply a random transformation to the source point cloud to simulate an initial state
+    trans_init = np.asarray(
+            [
+                [0.862, 0.011, -0.507, 3.10005 * frame_size],
+                [-0.139, 0.967, -0.215, 3.51007 * frame_size],
+                [0.487, 0.255, 0.835, -0.4 * frame_size],
+                [0.0, 0.0, 0.0, 1.0],
+            ]
+        )
+
+    trans_init[:3, :3] = generate_random_rotation_matrix()
+    # # --- FOR TESTING PURPOSE ONLY --- #
+
+    # supposing that we know an estimation of the gravity vector (e.g. along the y-axis/up vector)
+    # we can try to use it to align the point clouds so that y-axis is aligned
+    # here we use the y vector of the initial transformation and perturb it a bit to simulate the
+    # direction of the gravity
+    # This os to be used if your source point cloud is not aligned with the gravity
+    idx_gravity_axis = 1
+
+    gravity_transform = gravity_transformation(
+        trans_init[:3, idx_gravity_axis], gravity_axis=idx_gravity_axis
+    )
+    trans_init = gravity_transform @ trans_init
+
+    trans_init = (
+        align_centers_from_files(source_file, target_file, trans_init, np.eye(4))
+        @ trans_init
+    )
+    
+    logger.debug(f"axis aligned:\n{trans_init @ np.eye(4)[:, idx_gravity_axis]}")
 
 
 def perturb_rotation_matrix(rot_mat: np.ndarray, sigma: float) -> np.ndarray:

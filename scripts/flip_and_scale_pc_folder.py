@@ -72,7 +72,7 @@ if __name__ == "__main__":
 
         logger.info(f"Processing file: {input_path}")
         pcd = o3d.io.read_point_cloud(input_path)
-        o3d.visualization.draw_geometries([pcd], window_name="Original Point Cloud")  # type: ignore
+        # o3d.visualization.draw_geometries([pcd], window_name="Original Point Cloud")  # type: ignore
         print_point_cloud_info(pcd, input_path)
 
         if args.scale:

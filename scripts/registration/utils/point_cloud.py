@@ -32,7 +32,10 @@ def preprocess_point_cloud(logger, pcd, voxel_size: float) -> tuple:
     pcd_fpfh = extract_fpfh(pcd_down, voxel_size)
     return pcd_down, pcd_fpfh
     
-
+def noise_Gaussian(points, std):
+    noise = np.random.normal(0, std, points.shape)
+    out = points + noise
+    return out
 
 def rough_scale_point_cloud(pcd: o3d.geometry.PointCloud) -> float:
     """Estimate a rough scale of the point cloud based on its oriented bounding box.

@@ -4,3 +4,12 @@ TEASER-plusplus/
 .python-version
 pyproject.toml
 uv.lock
+
+test_data/Clean/GT dataset/sameref/Source/ROS/without_objects/Ouster 32 Samples/ry_45degrees/Interior/ry*
+test_data/Clean/GT dataset/sameref/Source/ROS/without_objects/Ouster 32 Samples/ry_0degrees/Interior/ry*
+test_data/Clean/GT dataset/sameref/Source/ROS/without_objects/Ouster 128 Samples/ry_45degrees/Interior/ry*
+test_data/Clean/GT dataset/sameref/Source/ROS/without_objects/Ouster 128 Samples/ry_0degrees/Interior/ry*
+test_data/Clean/GT dataset/sameref/Source/ROS/with_objects/Ouster 32 Samples/ry_45degrees/Interior/ry*
+test_data/Clean/GT dataset/sameref/Source/ROS/with_objects/Ouster 32 Samples/ry_0degrees/Interior/ry*
+test_data/Clean/GT dataset/sameref/Source/ROS/with_objects/Ouster 128 Samples/ry_45degrees/Interior/ry*
+test_data/Clean/GT dataset/sameref/Source/ROS/with_objects/Ouster 128 Samples/ry_0degrees/Interior/ry*

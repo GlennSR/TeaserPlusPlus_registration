@@ -1,0 +1,8 @@
+without_objects/Ouster 32 Samples/ry_0degrees/Interior/
+without_objects/Ouster 32 Samples/ry_45degrees/Interior/
+without_objects/Ouster 128 Samples/ry_0degrees/Interior/
+without_objects/Ouster 128 Samples/ry_45degrees/Interior/
+with_objects/Ouster 32 Samples/ry_0degrees/Interior/
+with_objects/Ouster 32 Samples/ry_45degrees/Interior/
+with_objects/Ouster 128 Samples/ry_0degrees/Interior/
+with_objects/Ouster 128 Samples/ry_45degrees/Interior/
