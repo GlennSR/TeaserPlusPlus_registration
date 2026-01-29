@@ -19,7 +19,7 @@ Don't forget to create a conda environment and install the dependencies.
 - numpy
 - matplotlib (optional, for histograms)
 - open3d (recommended >= 0.10)
-- TEASER++ Python bindings (imported as `teaserpp_python`) — install following the TEASER++ docs for your platform. These bindings may require building TEASER++ from source.
+- teaserpp-python 1.0.0+ — install following the TEASER++ docs for your platform.
 
 You can install the Python dependencies with pip:
 
@@ -42,7 +42,18 @@ How to use `teaserpp_fpfh.py`
 Optional:
 - Compute metrics and save them to `<source>_metrics.json` in a `metrics/` folder next to the source file
 
-Main script arguments (short summary):
+```bash
+python3 teaserpp/scripts/teaserpp_fpfh.py \
+  --source "<SOURCE_PATH>" \
+  --target "<TARGET_PATH>" \
+  --voxel-size 30 \
+  --max_iter_icp 2000 \
+  --noise-std 0.01 \
+  --viz True \
+  -v INFO
+```
+
+Options:
 
 - `--source` Path to source point cloud (.ply or .pcd) (required)
 - `--target` Path to target point cloud (required)

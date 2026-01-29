@@ -143,7 +143,7 @@ def registration_metrics(target_raw: o3d.geometry.PointCloud,
     logger.info(f"  Fitness: {evaluation.fitness:.4f} (fraction of inlier points)")
     logger.info(f"  Inlier RMSE: {evaluation.inlier_rmse:.4f} mm (lower is better)")
     logger.info(f"  Correspondence set size: {len(evaluation.correspondence_set)}")
-    
+
     # Calculate inliers mean error (distances) between the correspondent points
 
     # Build point clouds of the correspondent inlier points
@@ -197,6 +197,12 @@ def registration_metrics(target_raw: o3d.geometry.PointCloud,
     logger.info(
         f"Rotation error (radians): {rot_err:.4f} (degrees: {np.degrees(rot_err):.4f}), Translation error: {trans_err:.4f}"
     )
+
+    # compute the rms error between initial and final translation (assuming that the points are corresponding)
+    registration_rmse = compute_rmse_transformations(
+        icp_sol.transformation, source_gt_transform, source_raw
+    )
+    logger.info(f"Registration RMSE: {registration_rmse}")
 
     # Save the calculated metrics to a .json file
     output_metrics = {

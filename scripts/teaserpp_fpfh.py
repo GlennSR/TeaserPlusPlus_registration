@@ -200,7 +200,7 @@ def teaserpp_registration(args: argparse.Namespace):
 
     ## METRICS ##
     # Calculate and save registration metrics
-    # registration_metrics(target_raw, source_raw, teaser_solver, icp_sol, num_corrs, NOISE_BOUND, registration_total_time, args)
+    registration_metrics(target_raw, source_raw, teaser_solver, icp_sol, num_corrs, NOISE_BOUND, registration_total_time, args)
 
 if __name__ == "__main__":
     # tutorial from here https://teaser.readthedocs.io/en/master/quickstart.html
