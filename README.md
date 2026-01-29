@@ -3,11 +3,14 @@
 About
 -----
 This repository is based on https://github.com/MIT-SPARK/TEASER-plusplus to apply Teaser++ on a folder containing source point clouds in relation to a specified target point cloud.
-It provides an example source and target dataset inside /test_data, where:
+It provides an example source and target dataset inside `/test_data`, where:
 - source is produced by the ROS Simulation: https://github.com/GlennSR/ROS2-Lidar-Simulation [1]
 - target is produced using a CAD model and the following repository: https://github.com/simogasp/STEPToPoints
 
 You'll find the main script `teaserpp_fpfh.py` alongside with others utility and visualization scripts
+
+Notes:
+- The source and the target point clouds can be any .ply file coming from a simulation, the real LiDAR, a converted CAD Model or any other
 
 Dependencies
 ------------
@@ -181,4 +184,5 @@ Troubleshooting & tips
 ----------------------
 - Check Source and Target references: The script loads a JSON with the key `H` used as a homogeneous 4×4 matrix. Make sure the Source point cloud is aligned with the same axis reference than the Target;
 - Using the ROS simulation to produce more datasets: If you decide to build your own dataset using the ROS Simulation [1] so you'll have use `flip_and_scale_pc_folder.py` script to align the axis and scale the point clouds before using them in the teaser script. 
+- If you want to use another source point cloud and check if the calculated metrics are correct, just make sure to correct the axis reference t match the target reference
 - TEASER++ bindings: The TEASER++ Python bindings may require compilation — if `import teaserpp_python` fails, follow TEASER++ build instructions for your platform.

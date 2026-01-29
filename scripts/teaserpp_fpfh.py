@@ -187,6 +187,7 @@ def teaserpp_registration(args: argparse.Namespace):
 
     # local refinement using ICP Point to Plane
     icp_sol = refine_registration(source_raw, target_raw, NOISE_BOUND, T_teaser, max_iteration=args.max_iter_icp)
+    # This is the estimated transformation where you can find the rotation and translation of the source in the target reference frame
     T_icp = icp_sol.transformation
 
     # Computing elapsed time to run Teaser++ registration
