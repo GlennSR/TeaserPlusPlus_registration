@@ -80,17 +80,12 @@ Notes:
 - If you enable `--viz True` the script will open Open3D visualizers and show images for each step of the registration
 - Metrics are written into a JSON file next to your source file under a `metrics/` directory. The JSON includes the estimated transformation, fitness, inlier RMSE and other diagnostics.
 
-```markdown
 ![Initial State](https://github.com/GlennSR/TeaserPlusPlus_registration/tree/main/docs/gifs/initial_state.gif)
 
 ![Registration Result](https://github.com/GlennSR/TeaserPlusPlus_registration/tree/main/docs/gifs/registration_result.gif)
-```
 
 Troubleshooting & tips
 ----------------------
 - Check Source and Target references: The script loads a JSON with the key `H` used as a homogeneous 4×4 matrix. Make sure the Source point cloud is aligned with the same axis reference than the Target;
 - Using the ROS simulation to produce more datasets: If you decide to build your own dataset using my ROS Simulation https://github.com/GlennSR/ROS2-Lidar-Simulation so you'll have use `flip_and_scale_pc_folder.py` script to align the axis and scale the point clouds before using them in the teaser script. 
 - TEASER++ bindings: The TEASER++ Python bindings may require compilation — if `import teaserpp_python` fails, follow TEASER++ build instructions for your platform.
-
----
-Last updated: 2026-01-28
