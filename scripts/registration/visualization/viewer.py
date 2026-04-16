@@ -13,6 +13,8 @@ def draw_registration_result(
     transformation: np.ndarray,
     window_name: str,
     size: float = 1,
+    target_frame_trans: np.ndarray = np.identity(4),
+    source_frame_trans: np.ndarray = np.identity(4),
 ) -> None:
     """Visualize the registration result by applying transformation to source.
 
@@ -36,15 +38,24 @@ def draw_registration_result(
     source_temp.paint_uniform_color([1, 0.706, 0])  # yellow
     target_temp.paint_uniform_color([0, 0.651, 0.929])  # cyan
     source_temp.transform(transformation)
+
+    # Creating frames for visualization
     mesh_frame_target = o3d.geometry.TriangleMesh.create_coordinate_frame(
         size=size, origin=[0, 0, 0]
     )
-    source_temp_origin = o3d.geometry.TriangleMesh.create_coordinate_frame(
-        size=size, origin=source.get_center()
+    mesh_frame_target.transform(target_frame_trans)
+
+    mesh_frame_source = o3d.geometry.TriangleMesh.create_coordinate_frame(
+        size=size/1.5, origin=source.get_center()
     )
-    source_temp_origin.transform(transformation)
+    mesh_frame_source.transform(source_frame_trans)
+
+    mesh_frame_world = o3d.geometry.TriangleMesh.create_coordinate_frame(
+        size=size*1.5, origin=[0, 0, 0]
+    )
+    
     o3d.visualization.draw_geometries(  # type: ignore
-        [source_temp, target_temp, mesh_frame_target, source_temp_origin], window_name=window_name
+        [source_temp, target_temp, mesh_frame_target, mesh_frame_source, mesh_frame_world], window_name=window_name
     )
 
 def save_registration_result(

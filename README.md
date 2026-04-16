@@ -2,7 +2,7 @@
 
 About
 -----
-This repository is based on https://github.com/MIT-SPARK/TEASER-plusplus to apply Teaser++ on a folder containing source point clouds in relation to a specified target point cloud.
+This repository is based on https://github.com/MIT-SPARK/TEASER-plusplus and apply Teaser++ on a folder containing source point clouds in relation to a specified target point cloud.
 It provides an example source and target dataset inside `/test_data`, where:
 - source is produced by the ROS Simulation: https://github.com/GlennSR/ROS2-Lidar-Simulation [1]
 - target is produced using a CAD model and the following repository: https://github.com/simogasp/STEPToPoints

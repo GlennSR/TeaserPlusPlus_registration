@@ -28,10 +28,10 @@ Arguments:
     --verbose: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL).
 
 For example to flip a point cloud coming from the sampling of the maquette (stp file)
-    uv run ./scripts/flip_and_scale_pc.py --input data/maquette12k.ply --output data/sameref/maquette12k.ply --flip z
+    python3 ./scripts/flip_and_scale_pc_folder.py --input data/ --output data/sameref/ --flip z
 
 To flip a scan coming from the ROS simulator (flip + scale back to mm)
-    uv run ./scripts/flip_and_scale_pc.py --input data/y_-0.75m/pcl_out_time104-116000000.ply --output data/sameref/y_-0.75m.ply --scale 1000 --flip nx
+    python3 ./scripts/flip_and_scale_pc_folder.py --input data/y_-0.75m/ --output data/sameref/ --scale 1000 --flip nx
 '''
 
 if __name__ == "__main__":

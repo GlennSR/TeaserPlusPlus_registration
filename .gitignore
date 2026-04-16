@@ -5,6 +5,12 @@ TEASER-plusplus/
 pyproject.toml
 uv.lock
 
+test_data/Real_Lidar/
+test_data/Simulated/
+scripts/data_folders/
+scripts/metrics_output/
+scripts/result_folders/
+
 test_data/Clean/GT dataset/sameref/Source/ROS/without_objects/Ouster 32 Samples/ry_45degrees/Interior/ry*
 test_data/Clean/GT dataset/sameref/Source/ROS/without_objects/Ouster 32 Samples/ry_0degrees/Interior/ry*
 test_data/Clean/GT dataset/sameref/Source/ROS/without_objects/Ouster 32 Samples/ry_0degrees/Interior/metrics

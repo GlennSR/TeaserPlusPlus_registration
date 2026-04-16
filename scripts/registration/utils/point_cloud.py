@@ -1,6 +1,7 @@
 """Point cloud geometry analysis and manipulation utilities."""
 
 import numpy as np
+import copy
 import open3d as o3d
 from helpers import *
 
@@ -139,6 +140,9 @@ def align_centers(
         >>> T_align = align_centers(source, target)
         >>> source.transform(T_align)  # Apply alignment
     """
+    source = copy.deepcopy(source)
+    target = copy.deepcopy(target)
+
     source.transform(correction)
     target.transform(correction)
 

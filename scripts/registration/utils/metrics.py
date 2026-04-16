@@ -81,8 +81,11 @@ def compute_rmse_transformations(
 
 def registration_metrics(target_raw: o3d.geometry.PointCloud,
                          source_raw: o3d.geometry.PointCloud,
+                         target_down_nb_points: int,
+                         source_down_nb_points: int,
                          teaser_solver: teaserpp_python.teaserpp_python.RobustRegistrationSolver,
                          icp_sol: o3d.pipelines.registration.RegistrationResult,
+                         trans_init: np.ndarray,
                          num_corrs: int,
                          NOISE_BOUND: float,
                          registration_total_time: float,
@@ -102,29 +105,22 @@ def registration_metrics(target_raw: o3d.geometry.PointCloud,
         :param args: Command line arguments
     """
 
-    VISUALIZE = args.viz
+    # Correct Estimated matrix by the trans_init matrix used for alignment with the gravity
+    # icp_sol.transformation = icp_sol.transformation 
+
     if os.path.isdir(args.source):
        source_dir = args.source
     else:
         source_dir, _ = os.path.split(args.source)
     # Calculate the metric of the result transformation using Open3D compute_point_cloud_distance() method
     # Full-cloud distances
-    T_icp = icp_sol.transformation
-    source_raw_T_icp = copy.deepcopy(source_raw).transform(T_icp)
+    source_raw_T_icp = copy.deepcopy(source_raw).transform(icp_sol.transformation)
     distances_o3d = target_raw.compute_point_cloud_distance(source_raw_T_icp)
     logger.info(f"Mean Open3D distance for the registration result (full cloud): {np.mean(distances_o3d):.6f}")
 
     # Calculate the standard deviation of the full-cloud distances
     std_distance = np.std(distances_o3d)
     logger.info(f"Standard deviation of distances after registration (full cloud): {std_distance:.6f}")
-
-    if VISUALIZE:
-        plt.hist(distances_o3d, bins=20, color='blue', rwidth=1.0)
-        plt.title('Histogram of Point-to-Point Distances After Registration')
-        plt.xlabel('Distance')
-        plt.ylabel('Frequency')
-        plt.grid(True)
-        plt.show()
 
     # TEASER++ internal quality metrics
     teaser_solution = teaser_solver.getSolution()
@@ -137,19 +133,28 @@ def registration_metrics(target_raw: o3d.geometry.PointCloud,
 
     # Evaluate the solution using Open3D
     evaluation = o3d.pipelines.registration.evaluate_registration(
-        source_raw, target_raw, NOISE_BOUND, T_icp
+        source_raw, target_raw, NOISE_BOUND, icp_sol.transformation
     )
     logger.info(f"Open3D Evaluation Metrics:")
-    logger.info(f"  Fitness: {evaluation.fitness:.4f} (fraction of inlier points)")
+    logger.info(f"  Fitness: {evaluation.fitness:.4f} (fraction of source inlier points)")
     logger.info(f"  Inlier RMSE: {evaluation.inlier_rmse:.4f} mm (lower is better)")
-    logger.info(f"  Correspondence set size: {len(evaluation.correspondence_set)}")
+    logger.info(f"  ICP correspondence set size: {len(evaluation.correspondence_set)} / {len(source_raw.points)} source points ({len(evaluation.correspondence_set)/len(source_raw.points)*100:.1f}%)")
+    logger.info(f"  FPFH correspondences: {num_corrs}")
 
-    # Calculate inliers mean error (distances) between the correspondent points
+
+    ## Calculate inliers mean error (distances) between the correspondent points
 
     # Build point clouds of the correspondent inlier points
     corr = np.asarray(evaluation.correspondence_set)
     src_corr_pts = np.asarray(source_raw.points)[corr[:,0]]
     tgt_corr_pts = np.asarray(target_raw.points)[corr[:,1]]
+
+    logger.info(f"Number of inlier correspondences after registration: {len(src_corr_pts)}")
+
+    percentage_inliers_to_target = len(src_corr_pts) / len(target_raw.points)
+    logger.info(f"Percentage of inliers with respect to target point cloud: {percentage_inliers_to_target*100:.2f} %")
+    percentage_inliers_to_source = len(src_corr_pts) / len(source_raw.points)
+    logger.info(f"Percentage of inliers with respect to source point cloud: {percentage_inliers_to_source*100:.2f} %")
 
     src_corr_pcd = o3d.geometry.PointCloud()
     tgt_corr_pcd = o3d.geometry.PointCloud()
@@ -158,14 +163,16 @@ def registration_metrics(target_raw: o3d.geometry.PointCloud,
 
     # Compute inliers distances after registration
     src_corr_pcd_T = copy.deepcopy(src_corr_pcd)
-    src_corr_pcd_T.transform(T_icp)
+    src_corr_pcd_T.transform(icp_sol.transformation)
     distances_inliers = tgt_corr_pcd.compute_point_cloud_distance(src_corr_pcd_T)
 
-    logger.info(f"Inlier distances mean={np.mean(distances_inliers):.4f} mm")
+    logger.info(f"Mean distance for the registration inliers (only inliers): {np.mean(distances_inliers):.6f}")
     
+    # Correct icp transformation by the initial transformation used for gravity alignment
+    T_icp_corrected = icp_sol.transformation @ trans_init
 
     logger.info(f"ICP refinement result: {icp_sol}")
-    logger.info(f"Estimated matrix:\n{icp_sol.transformation}")
+    logger.info(f"Estimated matrix:\n{T_icp_corrected}")
     logger.info(
         f"Result fitness: {icp_sol.fitness}, inlier RMSE: {icp_sol.inlier_rmse} mm"
     )
@@ -190,9 +197,9 @@ def registration_metrics(target_raw: o3d.geometry.PointCloud,
     # NB this only make sense if you are aligning the same model
     # difference between initial and final transformation
     rot_err, trans_err = transformation_error(
-        icp_sol.transformation, source_gt_transform
+        T_icp_corrected, source_gt_transform
     )
-    matrix = icp_sol.transformation @ source_gt_transform
+    matrix = T_icp_corrected @ source_gt_transform
     logger.debug(f"Product of the transformations:\n{matrix}")
     logger.info(
         f"Rotation error (radians): {rot_err:.4f} (degrees: {np.degrees(rot_err):.4f}), Translation error: {trans_err:.4f}"
@@ -200,25 +207,30 @@ def registration_metrics(target_raw: o3d.geometry.PointCloud,
 
     # compute the rms error between initial and final translation (assuming that the points are corresponding)
     registration_rmse = compute_rmse_transformations(
-        icp_sol.transformation, source_gt_transform, source_raw
+        T_icp_corrected, source_gt_transform, source_raw
     )
     logger.info(f"Registration RMSE: {registration_rmse}")
 
     # Save the calculated metrics to a .json file
     output_metrics = {
-        "estimated_transformation": icp_sol.transformation.tolist(),
-        "product_of_the_transformations": (T_icp @ source_gt_transform).tolist(),
         "rotation_error_rad": rot_err,
         "rotation_error_deg": np.degrees(rot_err),
         "translation_error": trans_err,
         "fitness": icp_sol.fitness,
         "inlier_rmse": icp_sol.inlier_rmse,
         "rmse_percentage_to_target_diagonal": rmse_percentage,
-        "mean_distance": float(np.mean(distances_o3d)),
-        "max_distance": float(np.max(distances_o3d)),
-        "standard_deviation_distance": float(std_distance),
+        "mean_distance_points_full_cloud": float(np.mean(distances_o3d)),
+        "max_distance_points_full_cloud": float(np.max(distances_o3d)),
+        "standard_deviation_distance_full_cloud": float(std_distance),
         "inlier_mean_distance": np.mean(distances_inliers),
-        "registration_total_time_sec": registration_total_time
+        "registration_total_time_sec": registration_total_time,
+        "nb_of_points_target_down": target_down_nb_points,
+        "nb_of_points_source_down": source_down_nb_points,
+        "nb_of_fpfh_correspondences": num_corrs,
+        "percentage_inliers_to_target": percentage_inliers_to_target,
+        "percentage_inliers_to_source": percentage_inliers_to_source,
+        "estimated_transformation": T_icp_corrected.tolist(),
+        "product_of_the_transformations": (T_icp_corrected @ source_gt_transform).tolist()
     }
     try:
         if not os.path.exists(source_dir + '/metrics'):
