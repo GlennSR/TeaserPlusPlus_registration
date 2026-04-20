@@ -235,8 +235,8 @@ if __name__ == "__main__":
     successful_rotation_registrations = sum(rotation_registrations)/len(rotation_registrations) * 100
     logger.info(f"Number of successful rotation registrations: {successful_rotation_registrations:.2f}%")
 
-    # voxel_size = int(input_args.input.split('/')[-1].replace('Voxel', ''))
-    voxel_size = 0
+    voxel_size = int(input_args.input.split('/')[-1].replace('Voxel', ''))
+    # voxel_size = 0
 
     success_rate = {
         "path": input_args.input,
@@ -258,9 +258,9 @@ if __name__ == "__main__":
         "mean_percentage_source_inliers_to_target_successful_registrations": mean_percentage_source_inliers_to_target_successful_registrations
     }
 
-    # voxel_size = input_args.input.split('/')[-1]
-    # number_voxel_size = voxel_size
-    # logger.info(f"Voxel size: {voxel_size}")
+    voxel_size = input_args.input.split('/')[-1]
+    number_voxel_size = voxel_size
+    logger.info(f"Voxel size: {voxel_size}")
     with open(os.path.join(input_args.input, input_args.output_path, f"success_rate.json"), 'w') as file:
             json.dump(success_rate, file, indent=4)
             logger.info(f"Saved metrics to {os.path.join(input_args.input, input_args.output_path, f'success_rate_{voxel_size}.json')}")

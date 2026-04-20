@@ -557,36 +557,53 @@ def teaserpp_registration_real(args: argparse.Namespace):
     # Initiate timer
     start_time = time.time()
     
-    # source_initial_guess_file = args.source.replace('.ply', '.json').replace('.pcd', '.json')
-    # try:
-    #     with open(source_initial_guess_file, 'r') as file:
-    #         trans_init = np.array(json.load(file)["H"])
-    # except FileNotFoundError:
-    #     logger.error(f"The file '{source_initial_guess_file}' was not found.")
-    # r = scipy.spatial.transform.Rotation.from_matrix(trans_init[:3, :3])
-    # r = r.as_euler('xyz')
-    # r[2] = 0 # For the real dataset the z-axis is considered the yaw angle
-    # # r[1] = 0 # For the simulated dataset the y-axis is considered the yaw angle
-    # trans_init[:3, :3] = scipy.spatial.transform.Rotation.from_euler('xyz', r).as_matrix()
-    # trans_init[:3, 3] = 0
-    # logger.info(f"Source Initial Guess: \n{trans_init}")
+    source_initial_guess_file = args.source.replace('.ply', '.json').replace('.pcd', '.json')
+    try:
+        with open(source_initial_guess_file, 'r') as file:
+            trans_init = np.array(json.load(file)["H"])
+    except FileNotFoundError:
+        logger.error(f"The file '{source_initial_guess_file}' was not found.")
+    r = scipy.spatial.transform.Rotation.from_matrix(trans_init[:3, :3])
+    r = r.as_euler('xyz')
+    r[2] = 0 # For the real dataset the z-axis is considered the yaw angle
+    trans_init[:3, :3] = scipy.spatial.transform.Rotation.from_euler('xyz', r).as_matrix()
+    trans_init[:3, 3] = 0
+    logger.info(f"Source Initial Guess: \n{trans_init}")
+
+    trans_init = np.asarray(
+        [
+            [0.862, 0.011, -0.507, 3.10005 * frame_size],
+            [-0.139, 0.967, -0.215, 3.51007 * frame_size],
+            [0.487, 0.255, 0.835, -0.4 * frame_size],
+            [0.0, 0.0, 0.0, 1.0],
+        ]
+    )
+
+    rotation = [[-0.28891384, -0.68714811, -0.66660053],
+                [ 0.78539809, -0.56827341,  0.24538778],
+                [-0.54742911, -0.45265086,  0.70386687]]
+
+    # rotation = generate_random_rotation_matrix()
+
+    # logger.info(f"Applying a random rotation to the initial transformation to simulate a more realistic initial misalignment:\n{rotation}")
+    trans_init[:3, :3] = rotation
 
     # supposing that we know an estimation of the gravity vector (e.g. along the y-axis/up vector)
     # we can try to use it to align the point clouds so that y-axis is aligned
     # here we use the y vector of the initial transformation and perturb it a bit to simulate the
     # direction of the gravity
-    # idx_gravity_axis = 2
+    idx_gravity_axis = 2
 
-    # gravity_transform = gravity_transformation(
-    #     trans_init[:3, idx_gravity_axis], gravity_axis=idx_gravity_axis
-    # )
-    # trans_init = gravity_transform @ trans_init
+    gravity_transform = gravity_transformation(
+        trans_init[:3, idx_gravity_axis], gravity_axis=idx_gravity_axis
+    )
+    trans_init = gravity_transform @ trans_init
 
-    # trans_init = (
-    #     align_centers_from_files(args.source, args.target, trans_init, np.eye(4))
-    #     @ trans_init
-    # )
-    trans_init = np.eye(4)  # @TODO remove this to test the effect of the initial transformation
+    trans_init = (
+        align_centers_from_files(args.source, args.target, trans_init, np.eye(4))
+        @ trans_init
+    )
+    # trans_init = np.eye(4)  # @TODO remove this to test the effect of the initial transformation
 
     # logger.debug(f"axis aligned:\n{trans_init @ np.eye(4)[:, idx_gravity_axis]}")
     logger.info(f"Updated initial transformation:\n{trans_init}")

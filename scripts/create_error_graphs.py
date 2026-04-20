@@ -44,7 +44,7 @@ if __name__ == "__main__":
 
     # Thresholds for the registration to be considered successful
     thresholds = {
-        "rotation_error_deg": 5.0,
+        "rotation_error_deg": 2.0,
         "translation_error": 200.0,
     }
 
@@ -150,8 +150,11 @@ if __name__ == "__main__":
     successful_rotation_registrations = sum(rotation_registrations) / len(rotation_registrations) * 100
     logger.info(f"Number of successful rotation registrations: {successful_rotation_registrations:.2f}%")
 
+    voxel_size = int(input_args.input.split('/')[-1].replace('Voxel', ''))
+
     success_rate = {
         "path": input_args.input,
+        "voxel_size": voxel_size,
         "total_registrations": len(colors),
         "rotation_error_threshold_deg": thresholds["rotation_error_deg"],
         "translation_error_threshold_mm": thresholds["translation_error"],
@@ -161,6 +164,9 @@ if __name__ == "__main__":
         "mean_translation_error_mm": mean_translation_error,
     }
 
-    with open(os.path.join(output_dir, "success_rate.json"), 'w') as file:
-        json.dump(success_rate, file, indent=4)
-        logger.info(f"Saved success rate to {os.path.join(output_dir, 'success_rate.json')}")
+    voxel_size = input_args.input.split('/')[-1]
+    number_voxel_size = voxel_size
+    logger.info(f"Voxel size: {voxel_size}")
+    with open(os.path.join(input_args.input, input_args.output_path, f"success_rate.json"), 'w') as file:
+            json.dump(success_rate, file, indent=4)
+            logger.info(f"Saved metrics to {os.path.join(input_args.input, input_args.output_path, f'success_rate_{voxel_size}.json')}")

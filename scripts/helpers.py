@@ -87,8 +87,6 @@ def get_teaser_solver(noise_bound):
         teaserpp_python.RobustRegistrationSolver.INLIER_GRAPH_FORMULATION.CHAIN
     solver_params.rotation_estimation_algorithm = \
         teaserpp_python.RobustRegistrationSolver.ROTATION_ESTIMATION_ALGORITHM.QUATRO
-    # teaserpp_python.RobustRegistrationSolver.ROTATION_ESTIMATION_ALGORITHM.FGR for simulated dataset
-    # teaserpp_python.RobustRegistrationSolver.ROTATION_ESTIMATION_ALGORITHM.QUATRO for real dataset
     solver_params.rotation_gnc_factor = 1.4
     solver_params.rotation_max_iterations = 1000
     solver_params.rotation_cost_threshold = 1e-16
@@ -98,10 +96,8 @@ def get_teaser_solver(noise_bound):
 
 def get_teaser_solver_test(noise_bound):
     solver_params = teaserpp_python.RobustRegistrationSolver.Params()
-    solver_params.cbar2 = 0.025 # truncation_distance² = cbar2 * noise_bound²
+    solver_params.cbar2 = 0.0075 # truncation_distance² = cbar2 * noise_bound²
     print(f"Using cbar2 = {solver_params.cbar2} (truncation_distance² = cbar2 * noise_bound²)")
-    # cbar2 = 1.25 for simulated dataset
-    # cbar2 = 0.25 for real dataset
     # cbar2 < 1 more agressive outlier rejection, cbar2 > 1 more tolerant, standard is 1.0
     solver_params.noise_bound = noise_bound
     solver_params.estimate_scaling = False
@@ -111,8 +107,6 @@ def get_teaser_solver_test(noise_bound):
         teaserpp_python.RobustRegistrationSolver.INLIER_GRAPH_FORMULATION.CHAIN
     solver_params.rotation_estimation_algorithm = \
         teaserpp_python.RobustRegistrationSolver.ROTATION_ESTIMATION_ALGORITHM.QUATRO
-    # teaserpp_python.RobustRegistrationSolver.ROTATION_ESTIMATION_ALGORITHM.FGR for simulated dataset
-    # teaserpp_python.RobustRegistrationSolver.ROTATION_ESTIMATION_ALGORITHM.QUATRO for real dataset
     solver_params.rotation_gnc_factor = 1.4
     solver_params.rotation_max_iterations = 1000
     solver_params.rotation_cost_threshold = 1e-16

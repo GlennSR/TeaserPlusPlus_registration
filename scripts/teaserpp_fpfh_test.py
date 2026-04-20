@@ -68,6 +68,7 @@ def refine_registration(
     distance_threshold: float,
     initial_transformation: np.ndarray,
     max_iteration: int,
+    use_generalized_icp: bool = False
 ) -> o3d.pipelines.registration.RegistrationResult:
     """Refine registration using point-to-plane ICP algorithm.
 
@@ -86,7 +87,9 @@ def refine_registration(
         Registration result containing the refined transformation matrix, fitness score,
         and inlier RMSE from the point-to-plane ICP registration.
     """
-    logger.info("Point-to-plane ICP registration is applied on original point clouds")
+    algorithm_name = "Generalized ICP (GICP)" if use_generalized_icp else "ICP"
+
+    logger.debug(f"  Pairwise {algorithm_name} registration...")
     logger.info(
         f"to refine the alignment. This time we use a strict distance threshold {distance_threshold:.3f}"
     )
@@ -96,13 +99,33 @@ def refine_registration(
             o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30)
         )  # @TODO check radius parameter wrt the size of the model/voxel
 
-    result = o3d.pipelines.registration.registration_icp(
-        source,
-        target,
-        distance_threshold,
-        initial_transformation,
-        o3d.pipelines.registration.TransformationEstimationPointToPlane(),
-        o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=max_iteration)
+    # Select registration method
+    if use_generalized_icp:
+        result = o3d.pipelines.registration.registration_generalized_icp(
+            source,
+            target,
+            distance_threshold,
+            initial_transformation,
+            o3d.pipelines.registration.TransformationEstimationForGeneralizedICP(),
+            o3d.pipelines.registration.ICPConvergenceCriteria(
+                max_iteration=max_iteration
+            ),
+        )
+    else:
+        # Use point-to-plane ICP for better convergence
+        result = o3d.pipelines.registration.registration_icp(
+            source,
+            target,
+            distance_threshold,
+            initial_transformation,
+            o3d.pipelines.registration.TransformationEstimationPointToPlane(),
+            o3d.pipelines.registration.ICPConvergenceCriteria(
+                max_iteration=max_iteration
+            ),
+        )
+
+    logger.debug(
+        f"    Fitness: {result.fitness:.4f}, RMSE: {result.inlier_rmse:.4f}"
     )
     return result
 
@@ -574,33 +597,24 @@ def teaserpp_registration_real(args: argparse.Namespace):
     trans_init[:3, :3] = scipy.spatial.transform.Rotation.from_euler('xyz', r).as_matrix()
     trans_init[:3, 3] = 0
     logger.info(f"Source Initial Guess: \n{trans_init}")
-    # supposing that we know an estimation of the gravity vector (e.g. along the y-axis/up vector)
-    # we can try to use it to align the point clouds so that y-axis is aligned
-    # here we use the y vector of the initial transformation and perturb it a bit to simulate the
-    # direction of the gravity
-    # idx_gravity_axis = 1
-
-    # trans_init = (
-    #     align_centers_from_files(args.source, args.target, trans_init, np.eye(4))
-    #     @ trans_init
+    
+    # trans_init = np.asarray(
+    #     [
+    #         [0.862, 0.011, -0.507, 3.10005 * frame_size],
+    #         [-0.139, 0.967, -0.215, 3.51007 * frame_size],
+    #         [0.487, 0.255, 0.835, -0.4 * frame_size],
+    #         [0.0, 0.0, 0.0, 1.0],
+    #     ]
     # )
-    trans_init = np.asarray(
-        [
-            [0.862, 0.011, -0.507, 3.10005 * frame_size],
-            [-0.139, 0.967, -0.215, 3.51007 * frame_size],
-            [0.487, 0.255, 0.835, -0.4 * frame_size],
-            [0.0, 0.0, 0.0, 1.0],
-        ]
-    )
 
-    rotation = [[-0.28891384, -0.68714811, -0.66660053],
-                [ 0.78539809, -0.56827341,  0.24538778],
-                [-0.54742911, -0.45265086,  0.70386687]]
+    # rotation = [[-0.28891384, -0.68714811, -0.66660053],
+    #             [ 0.78539809, -0.56827341,  0.24538778],
+    #             [-0.54742911, -0.45265086,  0.70386687]]
 
-    # rotation = generate_random_rotation_matrix()
+    # # rotation = generate_random_rotation_matrix()
 
-    # logger.info(f"Applying a random rotation to the initial transformation to simulate a more realistic initial misalignment:\n{rotation}")
-    trans_init[:3, :3] = rotation
+    # # logger.info(f"Applying a random rotation to the initial transformation to simulate a more realistic initial misalignment:\n{rotation}")
+    # trans_init[:3, :3] = rotation
     # trans_init = np.eye(4)
 
     # supposing that we know an estimation of the gravity vector (e.g. along the y-axis/up vector)
@@ -609,16 +623,16 @@ def teaserpp_registration_real(args: argparse.Namespace):
     # direction of the gravity
     idx_gravity_axis = 2
 
-    gravity_transform = gravity_transformation(
-        trans_init[:3, idx_gravity_axis], gravity_axis=idx_gravity_axis
-    )
-    trans_init = gravity_transform @ trans_init
+    # gravity_transform = gravity_transformation(
+    #     trans_init[:3, idx_gravity_axis], gravity_axis=idx_gravity_axis
+    # )
+    # trans_init = gravity_transform @ trans_init
 
-    trans_init = (
-        align_centers_from_files(args.source, args.target, trans_init, np.eye(4))
-        @ trans_init
-    )
-    trans_init = np.eye(4)  # @TODO remove this to test the effect of the initial transformation
+    # trans_init = (
+    #     align_centers_from_files(args.source, args.target, trans_init, np.eye(4))
+    #     @ trans_init
+    # )
+    # trans_init = np.eye(4)  # @TODO remove this to test the effect of the initial transformation
 
     # logger.debug(f"axis aligned:\n{trans_init @ np.eye(4)[:, idx_gravity_axis]}")
     logger.info(f"Updated initial transformation:\n{trans_init}")
@@ -669,7 +683,7 @@ def teaserpp_registration_real(args: argparse.Namespace):
 
     # TEASER++ registration
     NOISE_BOUND = VOXEL_SIZE * 2
-    teaser_solver = get_teaser_solver(NOISE_BOUND)
+    teaser_solver = get_teaser_solver_test(NOISE_BOUND)
     teaser_solver.solve(source_corr,target_corr)
     solution = teaser_solver.getSolution()
     R_teaser = solution.rotation
@@ -724,7 +738,7 @@ def teaserpp_registration_real(args: argparse.Namespace):
                                  source_frame_trans=T_teaser @ trans_init)
 
     # local refinement using ICP Point to Plane
-    icp_sol = refine_registration(source_raw, target_raw, NOISE_BOUND, T_teaser, max_iteration=args.max_iter_icp)
+    icp_sol = refine_registration(source_raw, target_raw, NOISE_BOUND, T_teaser, max_iteration=args.max_iter_icp, use_generalized_icp=args.use_gicp)
     # This is the estimated transformation where you can find the rotation and translation of the source in the target reference frame
     T_icp = icp_sol.transformation
 
@@ -765,8 +779,15 @@ if __name__ == "__main__":
     )
     
     parser.add_argument(
-        "--max_iter_icp", type=int, help="Input file path", default=2000
+        "--max_iter_icp", type=int, help="Input file path", default=30
     )
+
+    parser.add_argument(
+        "--use-gicp",
+        action="store_true",
+        help="Use Generalized ICP for refinement (otherwise use point-to-plane ICP)",
+    )
+
     parser.add_argument(
         "-v",
         "--verbose",

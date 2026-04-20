@@ -16,6 +16,7 @@ from registration.utils.transforms import (
 
 logger = logging.getLogger(__name__)
 
+
 def compute_rmse_between_point_clouds(
     source: o3d.geometry.PointCloud,
     target: o3d.geometry.PointCloud,
