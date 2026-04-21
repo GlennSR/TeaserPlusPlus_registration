@@ -15,9 +15,9 @@ for target in "${TARGETS[@]}"; do
         for voxel in "${VOXEL_SIZES[@]}"; do
             for noise in "${NOISE_STD[@]}"; do
                 echo "Running with folder: $folder, voxel size: $voxel and noise std : $noise"
-                python3 teaserpp_fpfh_test.py \
-                    --source "/home/gro5293/pcl_registration/teaserpp/test_data/Real_Lidar/GT_dataset/Source/$source.ply" \
-                    --target "/home/gro5293/pcl_registration/teaserpp/test_data/Real_Lidar/GT_dataset/Source/$target.ply" \
+                python3 ../teaserpp_fpfh.py \
+                    --source "../../test_data/Real_Lidar/GT_dataset/Source/scans/$source.ply" \
+                    --target "../../test_data/Real_Lidar/GT_dataset/Source/scans/$target.ply" \
                     --voxel-size "$voxel" \
                     --noise-std "$noise" \
                     # --viz True

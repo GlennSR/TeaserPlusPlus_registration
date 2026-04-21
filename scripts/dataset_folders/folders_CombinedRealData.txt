@@ -1,0 +1,6 @@
+../test_data/Real_Lidar/GT_dataset/Source/Combined_sources_step15
+../test_data/Real_Lidar/GT_dataset/Source/Combined_sources_step20
+../test_data/Real_Lidar/GT_dataset/Source/Combined_sources_step25
+../test_data/Real_Lidar/GT_dataset/Source/Combined_74%partial_sources
+../test_data/Real_Lidar/GT_dataset/Source/Combined_60%partial_sources
+../test_data/Real_Lidar/GT_dataset/Source/Combined_42%partial_sources

@@ -244,3 +244,79 @@ def registration_metrics(target_raw: o3d.geometry.PointCloud,
             logger.info(f"Saved metrics to {metrics_file}")
     except FileNotFoundError:
         logger.error(f"The file 'metrics.json' was not found.")
+
+
+def load_gt_transform(json_file):
+    try:
+        with open(json_file, 'r') as file:
+            gt_transform = np.array(json.load(file)["H"])
+            logger.info(f"Ground Truth transform: \n{gt_transform}")
+            return gt_transform
+    except FileNotFoundError:
+        logger.error(f"The file '{json_file}' was not found.")
+        return None
+
+
+def calculate_errors(estimated_transform, scan_gt_json, source_dir):
+    # NB this only make sense if you are aligning the same model
+    # difference between initial and final transformation
+    gt_transform = load_gt_transform(scan_gt_json)
+
+    rot_err, trans_err = transformation_error(
+        estimated_transform, gt_transform
+    )
+    matrix = estimated_transform @ gt_transform
+    logger.info(f"Product of the transformations:\n{matrix}")
+    logger.info(
+        f"Rotation error (radians): {rot_err:.4f} (degrees: {np.degrees(rot_err):.4f}), Translation error: {trans_err:.4f}"
+    )
+
+    # Save the calculated metrics to a .json file
+    output_metrics = {
+        "rotation_error_rad": rot_err,
+        "rotation_error_deg": np.degrees(rot_err),
+        "translation_error": trans_err,
+    }
+    try:
+        if not os.path.exists(source_dir + '/teaser_metrics'):
+            os.makedirs(source_dir + '/teaser_metrics')
+        pcd_file_path = scan_gt_json.replace('.json', '_metrics.json')
+        _, file_name = os.path.split(pcd_file_path)
+        metrics_file = os.path.join(source_dir, 'teaser_metrics', file_name)
+        with open(metrics_file, 'w') as file:
+            json.dump(output_metrics, file, indent=4)
+            logger.info(f"Saved metrics to {metrics_file}")
+    except FileNotFoundError:
+        logger.error(f"The file '{metrics_file}' was not found.")
+
+
+def save_reg_poses(estimated_transform, source_path, dir_name):
+    # Save the estimated transformation to a .json file
+    output_transform = {
+        "H": estimated_transform.tolist()
+    }
+    try:
+        logger.info(os.path.dirname(source_path) + '/' + dir_name)
+        if not os.path.exists(os.path.dirname(source_path) + '/' + dir_name):
+            os.makedirs(os.path.dirname(source_path) + '/' + dir_name)
+        _, file_name = os.path.split(source_path)
+        file_name = file_name.replace('.ply', '.json').replace('.pcd', '.json')
+        poses_file = os.path.join(os.path.dirname(source_path), dir_name, file_name)
+        with open(poses_file, 'w') as file:
+            json.dump(output_transform, file, indent=4)
+            logger.info(f"Saved poses to {poses_file}")
+    except FileNotFoundError:
+        logger.error(f"The file '{poses_file}' was not found.")
+
+    
+    # try:
+    #     if not os.path.exists(source_dir + '/metrics'):
+    #         os.makedirs(source_dir + '/metrics')
+    #     pcd_file_path = args.source.replace('.ply', '_metrics.json').replace('.pcd', '_metrics.json')
+    #     _, file_name = os.path.split(pcd_file_path)
+    #     metrics_file = os.path.join(source_dir, 'metrics', file_name)
+    #     with open(metrics_file, 'w') as file:
+    #         json.dump(output_metrics, file, indent=4)
+    #         logger.info(f"Saved metrics to {metrics_file}")
+    # except FileNotFoundError:
+    #     logger.error(f"The file 'metrics.json' was not found.")

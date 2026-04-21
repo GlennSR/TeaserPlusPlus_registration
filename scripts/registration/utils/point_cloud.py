@@ -32,6 +32,120 @@ def preprocess_point_cloud(logger, pcd, voxel_size: float) -> tuple:
     logger.debug(f"Compute FPFH feature with search radius {radius_feature:.3f}")
     pcd_fpfh = extract_fpfh(pcd_down, voxel_size)
     return pcd_down, pcd_fpfh
+
+
+def load_point_clouds_files_for_refinement(
+    source_ply: str,
+    target_ply: str,
+    voxel_size: float,
+    trans_init: np.ndarray = np.identity(4),
+) -> tuple:
+    """Load and prepare point cloud datasets for registration.
+    
+    Loads source and target downsampled point clouds, applies an initial transformation
+    to the source cloud, and preprocesses both clouds by computing
+    FPFH features for feature-based registration.
+
+    Args:
+        source: The original source point cloud.
+        target: Downsampled target point cloud.
+        voxel_size: The size of the voxel for downsampling both point clouds.
+        trans_init: Initial transformation matrix to apply to the source cloud (default: identity matrix).
+        correction: Correction transformation matrix to apply to both clouds, typically to align to the visual reference frame (default: identity matrix).
+
+    Returns:
+        A tuple containing:
+            - source: The original source point cloud with initial transformation applied
+            - target: The original target point cloud
+            - source_down: Downsampled source point cloud
+            - target_down: Downsampled target point cloud
+            - source_fpfh: FPFH features of the downsampled source
+            - target_fpfh: FPFH features of the downsampled target
+    """
+
+    source_down = load_point_cloud(source_ply, voxel_size)
+    source_down.transform(trans_init)
+
+    target_down = load_point_cloud(target_ply, voxel_size)
+
+    return source_down, target_down
+
+
+def load_point_clouds_for_refinement(
+    source: o3d.geometry.PointCloud,
+    target: o3d.geometry.PointCloud,
+    voxel_size: float,
+    trans_init: np.ndarray = np.identity(4),
+) -> tuple:
+    """Load and prepare point cloud datasets for registration.
+    
+    Loads source and target downsampled point clouds, applies an initial transformation
+    to the source cloud, and preprocesses both clouds by computing
+    FPFH features for feature-based registration.
+
+    Args:
+        source: The original source point cloud.
+        target: Downsampled target point cloud.
+        voxel_size: The size of the voxel for downsampling both point clouds.
+        trans_init: Initial transformation matrix to apply to the source cloud (default: identity matrix).
+        correction: Correction transformation matrix to apply to both clouds, typically to align to the visual reference frame (default: identity matrix).
+
+    Returns:
+        A tuple containing:
+            - source: The original source point cloud with initial transformation applied
+            - target: The original target point cloud
+            - source_down: Downsampled source point cloud
+            - target_down: Downsampled target point cloud
+            - source_fpfh: FPFH features of the downsampled source
+            - target_fpfh: FPFH features of the downsampled target
+    """
+
+    source_down = load_point_cloud(source, voxel_size)
+    source_down.transform(trans_init)
+
+    target_down = load_point_cloud(target, voxel_size)
+
+    return source_down, target_down
+
+
+def load_point_cloud(
+    ply_path: str,
+    voxel_size: float = 0.0,
+    estimate_normals: bool = True,
+) -> o3d.geometry.PointCloud:
+    """Load a point cloud from a PLY file.
+
+    Args:
+        ply_path: Path to PLY file.
+        voxel_size: If > 0, downsample point cloud with this voxel size.
+        estimate_normals: If True, estimate normals when not present.
+
+    Returns:
+        Point cloud (possibly downsampled, with normals if requested).
+    """
+    pcd = o3d.io.read_point_cloud(str(ply_path))
+    if not pcd.has_points():
+        raise ValueError(f"Point cloud {ply_path} is empty")
+
+    # Downsample if requested
+    if voxel_size > 0:
+        pcd = pcd.voxel_down_sample(voxel_size=voxel_size)
+
+    # Estimate normals if not present
+    if estimate_normals and not pcd.has_normals():
+        radius = (
+            voxel_size * 2
+            if voxel_size > 0
+            else 100.0
+        )
+        pcd.estimate_normals(
+            search_param=o3d.geometry.KDTreeSearchParamHybrid(
+                radius=radius, max_nn=30
+            )
+        )
+
+    return pcd
+
     
 def noise_Gaussian(points, std):
     noise = np.random.normal(0, std, points.shape)

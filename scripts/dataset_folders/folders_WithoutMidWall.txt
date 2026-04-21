@@ -1,0 +1,2 @@
+With_Mid_Wall/without_objects/Ouster_32_Samples/rz_0degrees/Interior
+With_Mid_Wall/without_objects/Ouster_32_Samples/rz_-45degrees/Interior

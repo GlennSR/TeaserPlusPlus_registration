@@ -1,0 +1,1 @@
+../../test_data/Real_Lidar/GT_dataset/Target/Coverage_test_targets/map_86k_v40_s20.ply

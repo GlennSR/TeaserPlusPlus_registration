@@ -75,7 +75,7 @@ def find_correspondences_spatial(source_pcd, target_pcd, feats0, feats1, max_dis
 
 def get_teaser_solver(noise_bound):
     solver_params = teaserpp_python.RobustRegistrationSolver.Params()
-    solver_params.cbar2 = 0.025 # truncation_distance² = cbar2 * noise_bound²
+    solver_params.cbar2 = 0.0075 # truncation_distance² = cbar2 * noise_bound²
     # cbar2 = 1.25 for simulated dataset
     # cbar2 = 0.25 for real dataset
     # cbar2 < 1 more agressive outlier rejection, cbar2 > 1 more tolerant, standard is 1.0

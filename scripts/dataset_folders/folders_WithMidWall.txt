@@ -1,0 +1,8 @@
+With_Mid_Wall/without_objects/Ouster_32_Samples/rz_0degrees/Interior
+With_Mid_Wall/without_objects/Ouster_128_Samples/rz_0degrees/Interior
+With_Mid_Wall/without_objects/Ouster_32_Samples/rz_-45degrees/Interior
+With_Mid_Wall/without_objects/Ouster_128_Samples/rz_-45degrees/Interior
+With_Mid_Wall/with_objects/Ouster_32_Samples/rz_0degrees/Interior
+With_Mid_Wall/with_objects/Ouster_128_Samples/rz_0degrees/Interior
+With_Mid_Wall/with_objects/Ouster_32_Samples/rz_-45degrees/Interior
+With_Mid_Wall/with_objects/Ouster_128_Samples/rz_-45degrees/Interior
