@@ -11,9 +11,8 @@ from registration.visualization.viewer import *
 import numpy as np 
 import copy
 from helpers import *
-from registration.utils.point_cloud import preprocess_point_cloud, noise_Gaussian, rough_scale_point_cloud, rough_scale_point_cloud_from_file, align_centers, load_point_clouds_for_refinement
-from registration.utils.transforms import apply_random_transform, generate_random_rotation_matrix, gravity_transformation, transformation_error
-from registration.utils.metrics import registration_metrics, calculate_errors, save_reg_poses
+from registration.utils.point_cloud import rough_scale_point_cloud_from_file, load_point_clouds_for_refinement
+from registration.utils.metrics import calculate_errors
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +94,18 @@ def main(args: argparse.Namespace):
     # Initiate timer
     start_time = time.time()
 
+    # If the target point cloud is not aligned with the world frame, then we need to apply it's known transformation 
+    # (Lidar to World) to align so the algorithm can estimate the transformation in the world reference frame.
+    target_gt_transform_file = args.target.replace('.ply', '.json').replace('.pcd', '.json')
+    try:
+        with open(target_gt_transform_file, 'r') as file:
+            target_toworld_transform = np.array(json.load(file)["H"])
+            logger.info(f"Target Ground Truth transform: \n{target_toworld_transform}")
+    except FileNotFoundError:
+        logger.error(f"The file '{target_gt_transform_file}' was not found.")
+    
+    target_raw.transform(target_toworld_transform)
+
     # Load source initial guess transformation from .json file
     scan_initial_guess_filename = os.path.split(args.source)[1].replace('.ply', '.json').replace('.pcd', '.json')
     scan_initial_guess_path = os.path.join(args.estimated_poses, scan_initial_guess_filename)
@@ -104,18 +115,24 @@ def main(args: argparse.Namespace):
             trans_init = np.array(json.load(file)["H"])
     except FileNotFoundError:
         logger.error(f"The file '{scan_initial_guess_path}' was not found.")
+    r = scipy.spatial.transform.Rotation.from_matrix(trans_init[:3, :3])
+    r = r.as_euler('xyz')
+    r[2] = 0 # For the real dataset the z-axis is considered the yaw angle
+    trans_init[:3, :3] = scipy.spatial.transform.Rotation.from_euler('xyz', r).as_matrix()
+    trans_init[:3, 3] = 0
     logger.info(f"Source Initial Guess: \n{trans_init}")
 
     if VISUALIZE:
         draw_registration_result(source_raw, target_raw, trans_init,
                                  window_name="Initial State (Source: Blue, Target: Red)", 
                                  size=frame_size, 
-                                 target_frame_trans=np.eye(4))
+                                 target_frame_trans=np.eye(4),
+                                 source_frame_trans=trans_init)
 
     logger.info(f"Loading scan at refinement resolution ({ref_voxel_size})...")
     source_refined, target_refined = load_point_clouds_for_refinement(
-    source_ply=args.source,
-    target_ply=args.target,
+    source=source_raw,
+    target=target_raw,
     voxel_size=ref_voxel_size,
     trans_init=trans_init # Apply the initial estimated global transformation before the refinement
     )
@@ -141,7 +158,7 @@ def main(args: argparse.Namespace):
     # Load Ground Thruth transformation from .json file
     scan_gt_json = args.source.replace('.ply', '.json').replace('.pcd', '.json')
 
-    calculate_errors(T_icp @ trans_init, scan_gt_json, source_dir)
+    calculate_errors(icp_sol, T_icp @ trans_init, scan_gt_json, source_dir, registration_total_time, source_raw, target_raw)
 
 if __name__ == "__main__":
     # tutorial from here https://teaser.readthedocs.io/en/master/quickstart.html

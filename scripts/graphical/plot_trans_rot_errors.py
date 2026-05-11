@@ -167,6 +167,6 @@ if __name__ == "__main__":
     voxel_size = input_args.input.split('/')[-1]
     number_voxel_size = voxel_size
     logger.info(f"Voxel size: {voxel_size}")
-    with open(os.path.join(input_args.input, input_args.output_path, f"success_rate.json"), 'w') as file:
+    with open(os.path.join(input_args.input, input_args.output_path, f"success_rate_{voxel_size}.json"), 'w') as file:
             json.dump(success_rate, file, indent=4)
             logger.info(f"Saved metrics to {os.path.join(input_args.input, input_args.output_path, f'success_rate_{voxel_size}.json')}")

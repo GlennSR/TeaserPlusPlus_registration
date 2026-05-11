@@ -12,7 +12,7 @@ import teaserpp_python
 import numpy as np 
 import copy
 from helpers import *
-from registration.utils.point_cloud import preprocess_point_cloud, noise_Gaussian, rough_scale_point_cloud, rough_scale_point_cloud_from_file, align_centers, load_point_clouds_for_refinement, load_point_clouds_files_for_refinement
+from registration.utils.point_cloud import preprocess_point_cloud, noise_Gaussian, rough_scale_point_cloud, rough_scale_point_cloud_from_file, align_centers, load_point_clouds_for_refinement, load_point_clouds_files_for_refinement, filter_points_far_from_center
 from registration.utils.transforms import apply_random_transform, generate_random_rotation_matrix, gravity_transformation, transformation_error
 from registration.utils.metrics import registration_metrics, calculate_errors, save_reg_poses
 
@@ -123,10 +123,12 @@ def refine_registration(
     )
     return result
 
+
 def translate_point_clouds(source: o3d.geometry.PointCloud, target: o3d.geometry.PointCloud, translation: np.ndarray):
     """Translate both source and target point clouds by a specified translation vector."""
     source.translate(translation)
     target.translate(translation)
+
 
 def distance_between_points(pcd: o3d.geometry.PointCloud, name: str = "Point Cloud"):
     """Compute distance statistics between each point and its nearest neighbor.
@@ -175,136 +177,6 @@ def distance_between_points(pcd: o3d.geometry.PointCloud, name: str = "Point Clo
     return distances
 
 
-def teaserpp_registration_simulated(args: argparse.Namespace):
-    # Load and visualize two point clouds
-    source_raw = o3d.io.read_point_cloud(args.source)
-    target_raw = o3d.io.read_point_cloud(args.target)
-    noise_std = args.noise_std * 1000 # scale to match point cloud units in mm
-    VOXEL_SIZE = args.voxel_size
-    VISUALIZE = args.viz
-
-    source_raw.paint_uniform_color([0.0, 0.0, 1.0]) # show source in blue
-    target_raw.paint_uniform_color([1.0, 0.0, 0.0]) # show target in red
-    frame_size = rough_scale_point_cloud_from_file(args.target) # scale frame size according to target to plot the axis in open3D Draw function
-
-    # for i in range(target_raw.points.__len__()):
-    #     logger.info(f"Target point {i}: {target_raw.points[i]}")
-    distance_between_points(source_raw, "Source (raw)")
-    # distance_between_points(target_raw, "Target (raw)")
-
-    if VISUALIZE:
-        draw_registration_result(source_raw, target_raw, np.eye(4), window_name="Initial State (Source: Blue, Target: Red)", size=frame_size)
-
-    # Add a random gaussian noise chosen by the user to the source point cloud
-    source_raw.points = o3d.utility.Vector3dVector(noise_Gaussian(np.asarray(source_raw.points), noise_std))
-
-    # if VISUALIZE:
-    #     draw_registration_result(source_raw, target_raw, np.eye(4), window_name="Noisy source", size=frame_size)
-
-    # Initiate timer
-    start_time = time.time()
-
-    source_initial_guess_file = args.source.replace('.ply', '.json').replace('.pcd', '.json')
-    try:
-        with open(source_initial_guess_file, 'r') as file:
-            trans_init = np.array(json.load(file)["H"])
-    except FileNotFoundError:
-        logger.error(f"The file '{source_initial_guess_file}' was not found.")
-    r = scipy.spatial.transform.Rotation.from_matrix(trans_init[:3, :3])
-    r = r.as_euler('xyz')
-    r[1] = 0 # For the simulated dataset the y-axis is considered the yaw angle
-    trans_init[:3, :3] = scipy.spatial.transform.Rotation.from_euler('xyz', r).as_matrix()
-    trans_init[:3, 3] = 0
-    logger.info(f"Source Initial Guess: \n{trans_init}")
-
-    # trans_init = (
-    #     align_centers_from_files(args.source, args.target, trans_init, np.eye(4))
-    #     @ trans_init
-    # )
-
-    # If the target point cloud is not aligned with the world frame, then we need to apply it's known transformation 
-    # (Lidar to World) to align so the algorithm can estimate the transformation in the world reference frame.
-    target_gt_transform_file = args.target.replace('.ply', '_gt_transform.json').replace('.pcd', '_gt_transform.json')
-    try:
-        with open(target_gt_transform_file, 'r') as file:
-            target_toworld_transform = np.array(json.load(file)["H"])
-            logger.info(f"Target Ground Truth transform: \n{target_toworld_transform}")
-    except FileNotFoundError:
-        logger.error(f"The file '{target_gt_transform_file}' was not found.")
-    
-    target_raw.transform(target_toworld_transform)
-
-    if VISUALIZE:
-        draw_registration_result(
-            source_raw, target_raw, trans_init, "Corrected settings", 
-            size=frame_size, 
-            target_frame_trans=target_toworld_transform, 
-            source_frame_trans=trans_init
-        )
-    source_raw, target_raw, source_down, target_down, source_feats, target_feats = prepare_dataset(source_raw, target_raw, VOXEL_SIZE, trans_init)
-
-    # if VISUALIZE:
-    #     draw_registration_result(source_down, target_down, np.eye(4), window_name="Random transform on Downsampled Point Clouds", size=frame_size)
-
-    # extract point coordinates as numpy arrays
-    source_xyz = pcd2xyz(source_down) # np array of size 3 by N
-    target_xyz = pcd2xyz(target_down) # np array of size 3 by M
-
-    # establish correspondences by nearest neighbour search in feature space
-    corrs_A, corrs_B = find_correspondences(
-        source_feats, target_feats, mutual_filter=True)
-    source_corr = source_xyz[:,corrs_A] # np array of size 3 by num_corrs
-    target_corr = target_xyz[:,corrs_B] # np array of size 3 by num_corrs
-
-    num_corrs = source_corr.shape[1]
-    logger.info(f'FPFH generates {num_corrs} putative correspondences.')
-
-    # visualize the point clouds together with feature correspondences
-    if VISUALIZE:
-        points = np.concatenate((source_corr.T,target_corr.T),axis=0)
-        lines = []
-        for i in range(num_corrs):
-            lines.append([i,i+num_corrs])
-        colors = [[0, 1, 0] for i in range(len(lines))] # lines are shown in green
-        line_set = o3d.geometry.LineSet(
-            points=o3d.utility.Vector3dVector(points),
-            lines=o3d.utility.Vector2iVector(lines),
-        )
-        line_set.colors = o3d.utility.Vector3dVector(colors)
-        o3d.visualization.draw_geometries([source_raw, target_raw, line_set], window_name="FPFH Correspondences")
-
-    # TEASER++ registration
-    NOISE_BOUND = VOXEL_SIZE * 2 # 2 works well
-    teaser_solver = get_teaser_solver(NOISE_BOUND)
-    teaser_solver.solve(source_corr,target_corr)
-    solution = teaser_solver.getSolution()
-    R_teaser = solution.rotation
-    t_teaser = solution.translation
-    T_teaser = Rt2T(R_teaser,t_teaser)
-        
-    # Visualize the registration results after TEASER++
-    if VISUALIZE:
-        draw_registration_result(source_raw, target_raw, T_teaser, window_name="TEASER++ Registration Results", size=frame_size)
-
-    # local refinement using ICP Point to Plane
-    icp_sol = refine_registration(source_raw, target_raw, NOISE_BOUND, T_teaser, max_iteration=args.max_iter_icp)
-    # This is the estimated transformation where you can find the rotation and translation of the source in the target reference frame
-    T_icp = icp_sol.transformation
-
-    # Computing elapsed time to run Teaser++ registration
-    end_time = time.time()
-    registration_total_time = end_time - start_time
-    logger.info(f"Elapsed time for TEASER++ Registration: {registration_total_time:.4f} seconds")
-
-    # visualize the registration after ICP refinement
-    if VISUALIZE:
-        draw_registration_result(source_raw, target_raw, T_icp, window_name="ICP Refinement", size=frame_size)
-
-    ## METRICS ##
-    # Calculate and save registration metrics
-    registration_metrics(target_raw, source_raw, len(target_down.points), len(source_down.points), teaser_solver, icp_sol, trans_init, num_corrs, NOISE_BOUND, registration_total_time, args)
-
-
 def print_points_per_voxel(pcd, voxel_size):
     """Print statistics about how many points fall into each voxel.
     
@@ -338,7 +210,7 @@ def print_points_per_voxel(pcd, voxel_size):
     logger.info(f"-----------------------------------------------")
 
 
-def teaserpp_registration_real(source_raw: o3d.geometry.PointCloud,
+def teaserpp_registration(source_raw: o3d.geometry.PointCloud,
                                trans_init: np.ndarray,
         target_raw: o3d.geometry.PointCloud,
         target_toworld_transform: np.ndarray,
@@ -371,43 +243,6 @@ def teaserpp_registration_real(source_raw: o3d.geometry.PointCloud,
                                  size=frame_size, 
                                  target_frame_trans=target_toworld_transform)
     
-    # trans_init = np.asarray(
-    #     [
-    #         [0.862, 0.011, -0.507, 3.10005 * frame_size],
-    #         [-0.139, 0.967, -0.215, 3.51007 * frame_size],
-    #         [0.487, 0.255, 0.835, -0.4 * frame_size],
-    #         [0.0, 0.0, 0.0, 1.0],
-    #     ]
-    # )
-
-    # rotation = [[-0.28891384, -0.68714811, -0.66660053],
-    #             [ 0.78539809, -0.56827341,  0.24538778],
-    #             [-0.54742911, -0.45265086,  0.70386687]]
-
-    # # rotation = generate_random_rotation_matrix()
-
-    # # logger.info(f"Applying a random rotation to the initial transformation to simulate a more realistic initial misalignment:\n{rotation}")
-    # trans_init[:3, :3] = rotation
-    # trans_init = np.eye(4)
-
-    # supposing that we know an estimation of the gravity vector (e.g. along the y-axis/up vector)
-    # we can try to use it to align the point clouds so that y-axis is aligned
-    # here we use the y vector of the initial transformation and perturb it a bit to simulate the
-    # direction of the gravity
-    idx_gravity_axis = 2
-
-    # gravity_transform = gravity_transformation(
-    #     trans_init[:3, idx_gravity_axis], gravity_axis=idx_gravity_axis
-    # )
-    # trans_init = gravity_transform @ trans_init
-
-    # trans_init = (
-    #     align_centers_from_files(args.source, args.target, trans_init, np.eye(4))
-    #     @ trans_init
-    # )
-    # trans_init = np.eye(4)  # @TODO remove this to test the effect of the initial transformation
-
-    # logger.debug(f"axis aligned:\n{trans_init @ np.eye(4)[:, idx_gravity_axis]}")
     logger.info(f"Updated initial transformation:\n{trans_init}")
 
     if VISUALIZE:
@@ -478,7 +313,9 @@ def main(args: argparse.Namespace):
     # Load and visualize two point clouds
     source_raw = o3d.io.read_point_cloud(args.source)
     target_raw = o3d.io.read_point_cloud(args.target)
-    noise_std = args.noise_std * 1000 # scale to match point cloud units in mm
+
+    # source_raw.scale(0.001, center=(0, 0, 0)) # scale to m
+
     VOXEL_SIZE = args.voxel_size
     VISUALIZE = args.viz
     frame_size = rough_scale_point_cloud_from_file(args.target) / 7.5 # scale frame size according to target to plot the axis in open3D Draw function
@@ -488,14 +325,17 @@ def main(args: argparse.Namespace):
 
     # Initiate timer
     start_time = time.time()
-
+    pose_sufix = '.json'
     # Load source initial guess transformation from .json file
-    source_initial_guess_file = args.source.replace('.ply', '.json').replace('.pcd', '.json')
+    source_initial_guess_file = args.source.replace('.ply', pose_sufix).replace('.pcd', pose_sufix)
     try:
         with open(source_initial_guess_file, 'r') as file:
             trans_init = np.array(json.load(file)["H"])
     except FileNotFoundError:
         logger.error(f"The file '{source_initial_guess_file}' was not found.")
+    
+    # In order to simulate a initial guess transformation the code gets only the ground truth rotations on x and y axis to align
+    # the source to the same vertical axis Z of the target so the point clouds are parallel.
     r = scipy.spatial.transform.Rotation.from_matrix(trans_init[:3, :3])
     r = r.as_euler('xyz')
     r[2] = 0 # For the real dataset the z-axis is considered the yaw angle
@@ -503,9 +343,17 @@ def main(args: argparse.Namespace):
     trans_init[:3, 3] = 0
     logger.info(f"Source Initial Guess: \n{trans_init}")
 
+    rot_180 = scipy.spatial.transform.Rotation.from_euler('z', 180, degrees=True).as_matrix()
+    logger.info(f"rotation 180 around z-axis:\n{rot_180}")
+    trans_init[:3, :3] = rot_180 @ trans_init[:3, :3]
+
+    # trans_init = np.eye(4) # Loads the source without any initial guess to test the robustness of the algorithm for this case
+
     # If the target point cloud is not aligned with the world frame, then we need to apply it's known transformation 
     # (Lidar to World) to align so the algorithm can estimate the transformation in the world reference frame.
     target_gt_transform_file = args.target.replace('.ply', '_gt_transform.json').replace('.pcd', '_gt_transform.json')
+    if not os.path.exists(target_gt_transform_file):
+        target_gt_transform_file = args.target.replace('.ply', pose_sufix).replace('.pcd', pose_sufix)
     try:
         with open(target_gt_transform_file, 'r') as file:
             target_toworld_transform = np.array(json.load(file)["H"])
@@ -515,17 +363,21 @@ def main(args: argparse.Namespace):
     
     target_raw.transform(target_toworld_transform) 
 
-    T_teaser, teaser_solver, target_down_nb_points, source_down_nb_points, num_corrs = teaserpp_registration_real(source_raw, trans_init, 
+    # Filter out source points that are too far from its center of mass to speed up the registration and avoid outliers
+    source_raw = filter_points_far_from_center(source_raw, 12)
+
+    T_teaser, teaser_solver, target_down_nb_points, source_down_nb_points, num_corrs = teaserpp_registration(source_raw, trans_init, 
                                                              target_raw, target_toworld_transform, 
                                                              VOXEL_SIZE, args.max_iter_icp, args.verbose, VISUALIZE)
     logger.info(f"Estimated transformation:\n{T_teaser @ trans_init}")
 
-    save_reg_poses(T_teaser @ trans_init, args.source, 'teaser_estimated_poses/')
+    save_reg_poses(T_teaser @ trans_init, args.source, f'teaser_estimated_poses_{int(float(VOXEL_SIZE)*1000)}/')
 
     # Load Ground Thruth transformation from .json file
-    scan_gt_json = args.source.replace('.ply', '.json').replace('.pcd', '.json')
+    scan_gt_json = source_initial_guess_file
 
-    calculate_errors(T_teaser @ trans_init, scan_gt_json, source_dir)
+    teaser_reg_time = time.time() - start_time
+    calculate_errors(None, T_teaser @ trans_init, scan_gt_json, source_dir, teaser_reg_time, source_raw, target_raw, f'/teaser_metrics_{int(float(VOXEL_SIZE)*1000)}/')
 
     if args.refine_registration:
         ref_voxel_size = args.refinement_voxel_size if args.refinement_voxel_size is not None else VOXEL_SIZE
@@ -544,18 +396,18 @@ def main(args: argparse.Namespace):
         # visualize the registration after ICP refinement
         if VISUALIZE:
             draw_registration_result(source_raw, target_raw, T_icp, window_name="ICP Refinement", 
-                                    size=frame_size, 
+                                    size=1, 
                                     target_frame_trans=target_toworld_transform, 
                                     source_frame_trans=T_icp @ trans_init)
 
-    # Computing elapsed time to run Teaser++ registration
-    end_time = time.time()
-    registration_total_time = end_time - start_time
-    logger.info(f"Elapsed time for TEASER++ Registration: {registration_total_time:.4f} seconds")
+        # Computing elapsed time to run Teaser++ registration
+        end_time = time.time()
+        registration_total_time = end_time - start_time
+        logger.info(f"Elapsed time for TEASER++ Registration: {registration_total_time:.4f} seconds")
 
-    ## METRICS ##
-    # Calculate and save registration metrics 
-    registration_metrics(target_raw, source_raw, target_down_nb_points, source_down_nb_points, teaser_solver, icp_sol, trans_init, num_corrs, VOXEL_SIZE * 2, registration_total_time, args)
+        ## METRICS ##
+        # Calculate and save registration metrics 
+        registration_metrics(target_raw, source_raw, target_down_nb_points, source_down_nb_points, teaser_solver, icp_sol, trans_init, num_corrs, VOXEL_SIZE * 2, registration_total_time, args)
 
 
 if __name__ == "__main__":
@@ -629,11 +481,11 @@ if __name__ == "__main__":
        # Create a list with only the supported point cloud files for registration
        pcl_files = [f for f in os.listdir(input_args.source) if f.endswith('.ply') or f.endswith('.pcd')]
     #    file = []
-    #    for i in range(271,380):
+    #    for i in range(0,28):
     #         file.append(f"{i}.ply")
     #    logger.info(f"pcl_files: {file}")
-       number_of_files = len(pcl_files)
     #    pcl_files = file
+       number_of_files = len(pcl_files)
 
        logger.info(f"Source is a directory, applying TEASER++ registration to all its {number_of_files} files.")
        source_dir = copy.deepcopy(input_args.source)

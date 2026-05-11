@@ -1,9 +1,15 @@
+import matplotlib
+matplotlib.use('Agg')  # non-interactive backend — no display/Tk needed
 import matplotlib.pyplot as plt
 import numpy as np
 import json
 import os
 import argparse
 import logging
+
+import sys
+sys.path.append("../")  # Add the parent directory to the path
+
 from registration.utils.logging import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -73,8 +79,8 @@ if __name__ == "__main__":
     
     # Thresholds for the registration to be considered successful
     thresholds = {
-                "rotation_error_deg": 5.0,
-                "translation_error": 200.0,
+                "rotation_error_deg": 2.0,
+                "translation_error": 0.2,
     }
     
     is_data_long = input_args.long_data
@@ -96,7 +102,7 @@ if __name__ == "__main__":
     count = 0
     for filename in metric_files:
         metric_label = filename.replace('_metrics.json', '')
-        logger.info(f"Loading metric: {metric_label}")
+        logger.debug(f"Loading metric: {metric_label}")
         file_path = os.path.join(input_args.input, filename)
         metric_values["metric_label"].append(metric_label)
         load_json(file_path)
@@ -136,8 +142,8 @@ if __name__ == "__main__":
             # Prepare x positions and labels
             x_positions = list(range(len(values)))
 
-            # Dynamic figure width: scale with number of samples (min 12, ~0.3 inch per sample)
-            fig_width = max(12, len(values) * 0.3)
+            # Dynamic figure width: scale with number of samples, capped at 60 inches
+            fig_width = min(60, max(12, len(values) * 0.3))
             fig, ax = plt.subplots(figsize=(fig_width, 8))
 
             # If the registration worked (rotation_error_deg < 5.0 or translation_error < 100) then change the color to green.
@@ -261,6 +267,6 @@ if __name__ == "__main__":
     voxel_size = input_args.input.split('/')[-1]
     number_voxel_size = voxel_size
     logger.info(f"Voxel size: {voxel_size}")
-    with open(os.path.join(input_args.input, input_args.output_path, f"success_rate.json"), 'w') as file:
+    with open(os.path.join(input_args.input, input_args.output_path, f"success_rate_{voxel_size}.json"), 'w') as file:
             json.dump(success_rate, file, indent=4)
             logger.info(f"Saved metrics to {os.path.join(input_args.input, input_args.output_path, f'success_rate_{voxel_size}.json')}")

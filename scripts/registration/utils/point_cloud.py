@@ -109,23 +109,26 @@ def load_point_clouds_for_refinement(
 
 
 def load_point_cloud(
-    ply_path: str,
+    ply: str | o3d.geometry.PointCloud,
     voxel_size: float = 0.0,
     estimate_normals: bool = True,
 ) -> o3d.geometry.PointCloud:
-    """Load a point cloud from a PLY file.
+    """Load a point cloud from a PLY file or point cloud object.
 
     Args:
-        ply_path: Path to PLY file.
+        ply_path: Path to PLY file or point cloud object.
         voxel_size: If > 0, downsample point cloud with this voxel size.
         estimate_normals: If True, estimate normals when not present.
 
     Returns:
         Point cloud (possibly downsampled, with normals if requested).
     """
-    pcd = o3d.io.read_point_cloud(str(ply_path))
+    if isinstance(ply, str):
+        pcd = o3d.io.read_point_cloud(ply)
+    elif isinstance(ply, o3d.geometry.PointCloud):
+        pcd = copy.deepcopy(ply)
     if not pcd.has_points():
-        raise ValueError(f"Point cloud {ply_path} is empty")
+        raise ValueError(f"Point cloud {ply} is empty")
 
     # Downsample if requested
     if voxel_size > 0:
@@ -312,3 +315,37 @@ def align_centers_from_files(
     target = o3d.io.read_point_cloud(target_file)
 
     return align_centers(source, target, trans_init=trans_init, correction=correction)
+
+
+def filter_points_far_from_center(pcd: o3d.geometry.PointCloud, max_distance: float = 10.0) -> o3d.geometry.PointCloud:
+    """Filter out points that are farther than a specified distance from the point cloud's center.
+
+    This function computes the centroid of the input point cloud and removes any points
+    that are farther than the specified maximum distance from this centroid. This can be
+    useful for removing outliers or irrelevant points that may negatively impact registration
+    algorithms.
+
+    Args:
+        pcd: The input point cloud to filter.
+        max_distance: The maximum allowed distance from the centroid. Points farther than this
+            distance will be removed. Default is 10.0 units.
+    
+    Returns:
+        A new point cloud containing only the points that are within the specified distance from the centroid.
+    """
+    centroid = pcd.get_center()
+    points = np.asarray(pcd.points)
+    distances = np.linalg.norm(points - centroid, axis=1)
+    mask = distances <= max_distance
+    filtered_points = points[mask]
+
+    filtered_pcd = o3d.geometry.PointCloud()
+    filtered_pcd.points = o3d.utility.Vector3dVector(filtered_points)
+    if pcd.has_colors():
+        colors = np.asarray(pcd.colors)[mask]
+        filtered_pcd.colors = o3d.utility.Vector3dVector(colors)
+    if pcd.has_normals():
+        normals = np.asarray(pcd.normals)[mask]
+        filtered_pcd.normals = o3d.utility.Vector3dVector(normals)
+
+    return filtered_pcd
