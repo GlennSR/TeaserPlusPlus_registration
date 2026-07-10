@@ -90,7 +90,8 @@ def registration_metrics(target_raw: o3d.geometry.PointCloud,
                          num_corrs: int,
                          NOISE_BOUND: float,
                          registration_total_time: float,
-                         args: argparse.Namespace
+                         args: argparse.Namespace,
+                         output_dir: str
                          ):
     """
     Calculate and log various metrics to evaluate the registration result.
@@ -105,24 +106,17 @@ def registration_metrics(target_raw: o3d.geometry.PointCloud,
         :param registration_total_time: Total time taken for registration
         :param args: Command line arguments
     """
+    logger.info("\n"*2+"-"*30 + "Calculating Registration Error" + "-"*30)
 
-    # Correct Estimated matrix by the trans_init matrix used for alignment with the gravity
-    # icp_sol.transformation = icp_sol.transformation 
-
-    if os.path.isdir(args.source):
-       source_dir = args.source
-    else:
-        source_dir, _ = os.path.split(args.source)
     # Calculate the metric of the result transformation using Open3D compute_point_cloud_distance() method
     # Full-cloud distances
     source_raw_T_icp = copy.deepcopy(source_raw).transform(icp_sol.transformation)
     distances_o3d = target_raw.compute_point_cloud_distance(source_raw_T_icp)
-    logger.info(f"Mean Open3D distance for the registration result (full cloud): {np.mean(distances_o3d):.6f}")
+    logger.debug(f"Mean Open3D distance for the registration result (full cloud): {np.mean(distances_o3d):.6f}")
 
     # Calculate the standard deviation of the full-cloud distances
     std_distance = np.std(distances_o3d)
-    logger.info(f"Standard deviation of distances after registration (full cloud): {std_distance:.6f}")
-
+    logger.debug(f"Standard deviation of distances after registration (full cloud): {std_distance:.6f}")
     # TEASER++ internal quality metrics
     teaser_solution = teaser_solver.getSolution()
     translation_inliers = teaser_solver.getTranslationInliers()
@@ -141,6 +135,7 @@ def registration_metrics(target_raw: o3d.geometry.PointCloud,
     logger.info(f"  Inlier RMSE: {evaluation.inlier_rmse:.4f} mm (lower is better)")
     logger.info(f"  ICP correspondence set size: {len(evaluation.correspondence_set)} / {len(source_raw.points)} source points ({len(evaluation.correspondence_set)/len(source_raw.points)*100:.1f}%)")
     logger.info(f"  FPFH correspondences: {num_corrs}")
+    logger.info("\n"*2+"-"*60 + "\n"*2)
 
 
     ## Calculate inliers mean error (distances) between the correspondent points
@@ -150,12 +145,12 @@ def registration_metrics(target_raw: o3d.geometry.PointCloud,
     src_corr_pts = np.asarray(source_raw.points)[corr[:,0]]
     tgt_corr_pts = np.asarray(target_raw.points)[corr[:,1]]
 
-    logger.info(f"Number of inlier correspondences after registration: {len(src_corr_pts)}")
+    logger.debug(f"Number of inlier correspondences after registration: {len(src_corr_pts)}")
 
     percentage_inliers_to_target = len(src_corr_pts) / len(target_raw.points)
-    logger.info(f"Percentage of inliers with respect to target point cloud: {percentage_inliers_to_target*100:.2f} %")
+    logger.debug(f"Percentage of inliers with respect to target point cloud: {percentage_inliers_to_target*100:.2f} %")
     percentage_inliers_to_source = len(src_corr_pts) / len(source_raw.points)
-    logger.info(f"Percentage of inliers with respect to source point cloud: {percentage_inliers_to_source*100:.2f} %")
+    logger.debug(f"Percentage of inliers with respect to source point cloud: {percentage_inliers_to_source*100:.2f} %")
 
     src_corr_pcd = o3d.geometry.PointCloud()
     tgt_corr_pcd = o3d.geometry.PointCloud()
@@ -167,25 +162,28 @@ def registration_metrics(target_raw: o3d.geometry.PointCloud,
     src_corr_pcd_T.transform(icp_sol.transformation)
     distances_inliers = tgt_corr_pcd.compute_point_cloud_distance(src_corr_pcd_T)
 
-    logger.info(f"Mean distance for the registration inliers (only inliers): {np.mean(distances_inliers):.6f}")
+    logger.debug(f"Mean distance for the registration inliers (only inliers): {np.mean(distances_inliers):.6f}")
     
     # Correct icp transformation by the initial transformation used for gravity alignment
-    T_icp_corrected = icp_sol.transformation @ trans_init
+    # Convert transaltion back to meters
+    T_icp_meters = copy.deepcopy(icp_sol.transformation)
+    T_icp_meters[:3, 3] /= 1000  # Convert translation from mm to m
+    T_icp_corrected_meters = T_icp_meters @ trans_init
 
-    logger.info(f"ICP refinement result: {icp_sol}")
-    logger.info(f"Estimated matrix:\n{T_icp_corrected}")
-    logger.info(
-        f"Result fitness: {icp_sol.fitness}, inlier RMSE: {icp_sol.inlier_rmse} mm"
-    )
+    T_icp_corrected = copy.deepcopy(T_icp_corrected_meters)
+    T_icp_corrected[:3, 3] *= 1000  # Convert translation back to mm for logging
+
+    logger.debug(f"ICP refinement result: {icp_sol}")
+    logger.info(f"Estimated matrix (meters):\n{T_icp_corrected_meters}")
 
     # Calculate the diagonal length of the target point cloud bounding box and the RMSE as percentage of it
     max_point = np.max(np.asarray(target_raw.points), axis=0)
     min_point = np.min(np.asarray(target_raw.points), axis=0)
     target_diagonal_length = np.linalg.norm(max_point - min_point)
-    logger.info(f"Target point cloud diagonal length: {target_diagonal_length:.3f} mm")
+    logger.debug(f"Target point cloud diagonal length: {target_diagonal_length:.3f} mm")
 
     rmse_percentage = icp_sol.inlier_rmse / target_diagonal_length * 100
-    logger.info(f"ICP inlier RMSE as percentage of target diagonal length: {rmse_percentage:.4f} %")
+    logger.debug(f"ICP inlier RMSE as percentage of target diagonal length: {rmse_percentage:.4f} %")
 
     # Load Ground Thruth transformation from .json file
     source_json = args.source.replace('.ply', '.json').replace('.pcd', '.json')
@@ -193,29 +191,34 @@ def registration_metrics(target_raw: o3d.geometry.PointCloud,
         source_json = args.source.replace('.ply', '_pose.json').replace('.pcd', '_pose.json')
     try:
         with open(source_json, 'r') as file:
-            source_gt_transform = np.array(json.load(file)["H"])
-            logger.info(f"Source Ground Truth transform: \n{source_gt_transform}")
+            source_gt_transform_mm = load_gt_transform(source_json)
+            logger.debug(f"Source Ground Truth transform (in mm): \n{source_gt_transform_mm}")
     except FileNotFoundError:
         logger.error(f"The file '{source_json}' was not found.")
+
     # NB this only make sense if you are aligning the same model
     # difference between initial and final transformation
     rot_err, trans_err = transformation_error(
-        T_icp_corrected, source_gt_transform
+        T_icp_corrected, source_gt_transform_mm
     )
-    matrix = T_icp_corrected @ source_gt_transform.T
+    matrix = T_icp_corrected @ source_gt_transform_mm.T
     logger.debug(f"Product of the transformations:\n{matrix}")
-    logger.info(
-        f"Rotation error (radians): {rot_err:.4f} (degrees: {np.degrees(rot_err):.4f}), Translation error: {trans_err:.4f}"
+    logger.debug(
+        f"Rotation error (radians): {rot_err:.4f} (degrees: {np.degrees(rot_err):.4f}), Translation error: {trans_err:.4f} mm"
     )
 
     # compute the rms error between initial and final translation (assuming that the points are corresponding)
     registration_rmse = compute_rmse_transformations(
-        T_icp_corrected, source_gt_transform, source_raw
+        T_icp_corrected, source_gt_transform_mm, source_raw
     )
-    logger.info(f"Registration RMSE: {registration_rmse}")
+    logger.debug(f"Registration RMSE: {registration_rmse} mm")
 
     # Save the calculated metrics to a .json file
     output_metrics = {
+        "source": args.source,
+        "target": args.target,
+        "voxel_size": args.voxel_size,
+        "refinement_voxel_size": args.refinement_voxel_size,
         "rotation_error_rad": rot_err,
         "rotation_error_deg": np.degrees(rot_err),
         "translation_error": trans_err,
@@ -233,47 +236,60 @@ def registration_metrics(target_raw: o3d.geometry.PointCloud,
         "percentage_inliers_to_target": percentage_inliers_to_target,
         "percentage_inliers_to_source": percentage_inliers_to_source,
         "estimated_transformation": T_icp_corrected.tolist(),
-        "product_of_the_transformations": (T_icp_corrected @ source_gt_transform).tolist()
+        "product_of_the_transformations": (T_icp_corrected @ source_gt_transform_mm).tolist()
     }
+
+    # Print localization statistics
+    logger.info("\n"*2+"-"*30 + "Localization Statistics" + "-"*30)
+    logger.info(f"  Fitness: {icp_sol.fitness:.4f}")
+    logger.info(f"  Inlier RMSE: {icp_sol.inlier_rmse:.4f} mm")
+    logger.info(f"  RMSE as percentage of target diagonal length: {rmse_percentage:.4f} %")
+    logger.info(f"Error vs Ground Truth:")
+    logger.info(f"  Rotation error (radians): {rot_err:.4f} (degrees: {np.degrees(rot_err):.4f})")
+    logger.info(f"  Translation error: {trans_err:.4f} mm")
+    logger.info(f"Timing:")
+    logger.info(f"  Registration total time: {registration_total_time:.4f} sec")
+    logger.info("-"*60 + "\n"*2)
+
     try:
-        if not os.path.exists(source_dir + f'/metrics_{int(float(args.voxel_size)*1000)}_v{int(float(args.refinement_voxel_size)*1000)}'):
-            os.makedirs(source_dir + f'/metrics_{int(float(args.voxel_size)*1000)}_v{int(float(args.refinement_voxel_size)*1000)}')
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
         pcd_file_path = args.source.replace('.ply', '_metrics.json').replace('.pcd', '_metrics.json')
         _, file_name = os.path.split(pcd_file_path)
-        metrics_file = os.path.join(source_dir, f'metrics_{int(float(args.voxel_size)*1000)}_v{int(float(args.refinement_voxel_size)*1000)}', file_name)
+        metrics_file = os.path.join(output_dir, file_name)
         with open(metrics_file, 'w') as file:
             json.dump(output_metrics, file, indent=4)
             logger.info(f"Saved metrics to {metrics_file}")
     except FileNotFoundError:
         logger.error(f"The file 'metrics.json' was not found.")
+    logger.info("-"*100+"\n"*2)
+
+
+# [[ 0.50636631 -0.65424811  0.56174066 -1.09790498]
+#  [-0.57047087 -0.74266472 -0.35073082  4.91653141]
+#  [ 0.64664995 -0.14285841 -0.74928988  1.98157184]
+#  [ 0.          0.          0.          1.        ]]
 
 
 def load_gt_transform(json_file):
     try:
         with open(json_file, 'r') as file:
             gt_transform = np.array(json.load(file)["H"])
-            logger.info(f"Ground Truth transform: \n{gt_transform}")
-            return gt_transform
+            logger.info(f"Ground Truth transform (in m): \n{gt_transform}")
+            gt_transform_mm = copy.deepcopy(gt_transform)
+            gt_transform_mm[:3, 3] *= 1000  # Convert translation from m to mm
+            return gt_transform_mm
     except FileNotFoundError:
         logger.error(f"The file '{json_file}' was not found.")
         return None
 
 
-def load_gt_transform(json_file):
-    try:
-        with open(json_file, 'r') as file:
-            gt_transform = np.array(json.load(file)["H"])
-            logger.info(f"Ground Truth transform: \n{gt_transform}")
-            return gt_transform
-    except FileNotFoundError:
-        logger.error(f"The file '{json_file}' was not found.")
-        return None
-
-
-def calculate_errors(icp_sol, estimated_transform, scan_gt_json, source_dir, total_time, source, target, save_path='metrics/'):
+def calculate_errors(args, icp_sol, estimated_transform, voxel_size, scan_gt_json, total_time, source, target, output_dir='metrics/'):
     # NB this only make sense if you are aligning the same model
     # difference between initial and final transformation
+    logger.info("\n"*2+"-"*30 + "Calculating Teaser++ Errors" + "-"*30)
     gt_transform = load_gt_transform(scan_gt_json)
+    logger.info(f"Ground Truth transform (in mm): \n{gt_transform}")
 
     rot_err, trans_err = transformation_error(
         estimated_transform, gt_transform
@@ -281,7 +297,7 @@ def calculate_errors(icp_sol, estimated_transform, scan_gt_json, source_dir, tot
     matrix = estimated_transform @ gt_transform
     logger.info(f"Product of the transformations:\n{matrix}")
     logger.info(
-        f"Rotation error (radians): {rot_err:.4f} (degrees: {np.degrees(rot_err):.4f}), Translation error: {trans_err:.4f}"
+        f"Rotation error (radians): {rot_err:.4f} (degrees: {np.degrees(rot_err):.4f}), Translation error: {trans_err:.4f} mm"
     )
 
     if icp_sol is not None:
@@ -302,6 +318,9 @@ def calculate_errors(icp_sol, estimated_transform, scan_gt_json, source_dir, tot
 
     # Save the calculated metrics to a .json file
     output_metrics = {
+        "source": args.source,
+        "target": args.target,
+        "voxel_size": voxel_size,
         "rotation_error_rad": rot_err,
         "rotation_error_deg": np.degrees(rot_err),
         "translation_error": trans_err,
@@ -322,48 +341,38 @@ def calculate_errors(icp_sol, estimated_transform, scan_gt_json, source_dir, tot
         "product_of_the_transformations": matrix.tolist()
     }
     try:
-        logger.info(f"Saving metrics to: {source_dir + save_path}")
-        if not os.path.exists(source_dir + save_path):
-            os.makedirs(source_dir + save_path)
+
+        logger.info(f"Saving metrics to: {output_dir}")
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
         pcd_file_path = scan_gt_json.replace('.json', '_metrics.json')
         _, file_name = os.path.split(pcd_file_path)
         # metrics_file = os.path.join(source_dir, save_path, file_name)
-        metrics_file = source_dir + save_path + file_name
+        metrics_file = os.path.join(output_dir, file_name)
         logger.info(f"Metrics file path: {metrics_file}")
         with open(metrics_file, 'w') as file:
             json.dump(output_metrics, file, indent=4)
             logger.info(f"Saved metrics to {metrics_file}")
+        logger.info("-"*100+"\n"*2)
     except FileNotFoundError:
         logger.error(f"The file '{metrics_file}' was not found.")
 
 
-def save_reg_poses(estimated_transform, source_path, dir_name):
+def save_estimated_poses(estimated_transform, source_path, output_dir):
     # Save the estimated transformation to a .json file
+
     output_transform = {
         "H": estimated_transform.tolist()
     }
     try:
-        logger.info(os.path.dirname(source_path) + '/' + dir_name)
-        if not os.path.exists(os.path.dirname(source_path) + '/' + dir_name):
-            os.makedirs(os.path.dirname(source_path) + '/' + dir_name)
+        logger.info(f"Saving estimated poses to: {output_dir}")
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
         _, file_name = os.path.split(source_path)
         file_name = file_name.replace('.ply', '.json').replace('.pcd', '.json')
-        poses_file = os.path.join(os.path.dirname(source_path), dir_name, file_name)
+        poses_file = os.path.join(output_dir, file_name)
         with open(poses_file, 'w') as file:
             json.dump(output_transform, file, indent=4)
             logger.info(f"Saved poses to {poses_file}")
     except FileNotFoundError:
         logger.error(f"The file '{poses_file}' was not found.")
-
-    
-    # try:
-    #     if not os.path.exists(source_dir + '/metrics'):
-    #         os.makedirs(source_dir + '/metrics')
-    #     pcd_file_path = args.source.replace('.ply', '_metrics.json').replace('.pcd', '_metrics.json')
-    #     _, file_name = os.path.split(pcd_file_path)
-    #     metrics_file = os.path.join(source_dir, 'metrics', file_name)
-    #     with open(metrics_file, 'w') as file:
-    #         json.dump(output_metrics, file, indent=4)
-    #         logger.info(f"Saved metrics to {metrics_file}")
-    # except FileNotFoundError:
-    #     logger.error(f"The file 'metrics.json' was not found.")

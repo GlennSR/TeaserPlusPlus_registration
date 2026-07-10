@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Define the voxel sizes
-VOXEL_SIZES=(0.3 0.35 0.45 0.5 0.55 0.6)
-NOISE_STD=(0)
+VOXEL_SIZES=(100 200 250 300 350 400)
+REF_VOXEL_SIZES=(300)
 
 # Read folders from the text file
 FOLDERS=()
@@ -20,29 +20,19 @@ done < "../dataset_folders/Real_Nio_target.txt"
 for target in "${TARGET_FILES[@]}"; do
     for folder in "${FOLDERS[@]}"; do
         for voxel in "${VOXEL_SIZES[@]}"; do
-            echo "Running with folder: $folder, voxel size: $voxel and noise std : $noise"
-            python3 ../teaserpp_fpfh.py \
-                --source "$folder" \
-                --target "$target" \
-                --voxel-size "$voxel" \
-                --refine-registration \
-                --refinement-voxel-size 0.25 \
-                --use-gicp \
-                # --viz True
-
-            # Compute voxel*1000 as integer (handles float voxel values)
-            VS_K=$(awk -v v="$voxel" 'BEGIN{printf("%.0f", v*1000)}')
-            # Rename the /metric folder
-            mv "$folder/metrics_${VS_K}_250" \
-            "$folder/metrics_v${voxel}_$(basename "$target" .ply)"
-
-            # Rename the /teaser_metrics folder
-            mv "$folder/teaser_metrics_${VS_K}" \
-            "$folder/teaser_metrics_v${VS_K}_$(basename "$target" .ply)"
-
-            # Rename the /teaser_estimated_poses folder
-            mv "$folder/teaser_estimated_poses" \
-            "$folder/teaser_estimated_poses_v${VS_K}_$(basename "$target" .ply)"
+            for ref_voxel_size in "${REF_VOXEL_SIZES[@]}"; do
+                echo "Running with folder: $folder, voxel size: $voxel, ref voxel size: $ref_voxel_size"
+                python3 ../teaserpp_fpfh_test.py \
+                    --source "$folder" \
+                    --target "$target" \
+                    --voxel-size "$voxel" \
+                    --refine-registration \
+                    --refinement-voxel-size "$ref_voxel_size" \
+                    --use-gicp \
+                    -o "$folder"/metrics_self/partial_map/step10/TeaserPP \
+                    -v DEBUG \
+                    # --viz True
+            done
         done
     done
 done

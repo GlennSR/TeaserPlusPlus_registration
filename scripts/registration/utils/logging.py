@@ -34,12 +34,13 @@ class ColoredFormatter(logging.Formatter):
         return result
 
 
-def setup_logging(level=logging.INFO):
+def setup_logging(level=logging.INFO, filename=None, filemode='a'):
     """Set up logging configuration with colored output.
 
     Args:
         level: The logging level (default: logging.INFO).
-
+        filename: The name of the log file (default: None).
+        filemode: The mode for writing to the log file (default: 'a').
     Returns:
         The root logger instance.
     """
@@ -57,6 +58,12 @@ def setup_logging(level=logging.INFO):
     root_logger.setLevel(level)
     root_logger.handlers.clear()  # Remove any existing handlers
     root_logger.addHandler(handler)
+
+    # Set up file handler if filename is provided
+    if filename:
+        file_handler = logging.FileHandler(filename, mode=filemode)
+        file_handler.setFormatter(formatter)
+        root_logger.addHandler(file_handler)
 
     return root_logger
 

@@ -1,7 +1,10 @@
 scripts/*.png
-./scripts/teaserpp_fpfh_test.py
+/scripts/teaserpp_fpfh_test.py
+/scripts/teaserpp_fpfh_iter.py
+/scripts/teaserpp_fpfh_full.py
+
 TEASER-plusplus/
-./scripts/create_map_teaser.py
+/scripts/create_map_teaser.py
 .python-version
 pyproject.toml
 uv.lock
@@ -13,6 +16,8 @@ scripts/metrics_output/
 scripts/result_folders/
 scripts/Estimated_poses_folder/
 scripts/dataset_folders/
+scripts/batch_scripts/
+scripts/sbatch_scripts/
 
 test_data/Clean/GT dataset/sameref/Source/ROS/without_objects/Ouster 32 Samples/ry_45degrees/Interior/ry*
 test_data/Clean/GT dataset/sameref/Source/ROS/without_objects/Ouster 32 Samples/ry_0degrees/Interior/ry*

@@ -1,0 +1,2 @@
+/usr/bin/ar qc libregistration_lib.a CMakeFiles/registration_lib.dir/utils/helpers.cpp.o CMakeFiles/registration_lib.dir/utils/point_cloud.cpp.o CMakeFiles/registration_lib.dir/utils/transforms.cpp.o CMakeFiles/registration_lib.dir/utils/metrics.cpp.o CMakeFiles/registration_lib.dir/visualization/viewer.cpp.o
+/usr/bin/ranlib libregistration_lib.a

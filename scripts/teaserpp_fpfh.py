@@ -12,9 +12,8 @@ import teaserpp_python
 import numpy as np 
 import copy
 from helpers import *
-from registration.utils.point_cloud import preprocess_point_cloud, noise_Gaussian, rough_scale_point_cloud, rough_scale_point_cloud_from_file, align_centers, load_point_clouds_for_refinement, load_point_clouds_files_for_refinement, filter_points_far_from_center
-from registration.utils.transforms import apply_random_transform, generate_random_rotation_matrix, gravity_transformation, transformation_error
-from registration.utils.metrics import registration_metrics, calculate_errors, save_reg_poses
+from registration.utils.point_cloud import preprocess_point_cloud, rough_scale_point_cloud, rough_scale_point_cloud_from_file, load_point_clouds_files_for_refinement
+from registration.utils.metrics import registration_metrics, calculate_errors, save_estimated_poses
 
 logger = logging.getLogger(__name__)
 
@@ -49,12 +48,12 @@ def prepare_dataset(
 
     source.transform(trans_init)
 
-    logger.info("Preprocessing source point cloud")
+    logger.debug("Preprocessing source point cloud")
     source_down, source_fpfh = preprocess_point_cloud(logger, source, voxel_size)
     print_point_cloud_info(source_down, "Downsampled source")
     logger.debug(f"Feature of SOURCE: {source_fpfh}")
 
-    logger.info("Preprocessing target point cloud")
+    logger.debug("Preprocessing target point cloud")
     target_down, target_fpfh = preprocess_point_cloud(logger, target, voxel_size)
     print_point_cloud_info(target_down, "Downsampled target")
     logger.debug(f"Feature of TARGET: {target_fpfh}")
@@ -89,7 +88,7 @@ def refine_registration(
     algorithm_name = "Generalized ICP (GICP)" if use_generalized_icp else "ICP"
 
     logger.debug(f"  Pairwise {algorithm_name} registration...")
-    logger.info(
+    logger.debug(
         f"to refine the alignment. This time we use a strict distance threshold {distance_threshold:.3f}"
     )
 
@@ -123,93 +122,6 @@ def refine_registration(
     )
     return result
 
-
-def translate_point_clouds(source: o3d.geometry.PointCloud, target: o3d.geometry.PointCloud, translation: np.ndarray):
-    """Translate both source and target point clouds by a specified translation vector."""
-    source.translate(translation)
-    target.translate(translation)
-
-
-def distance_between_points(pcd: o3d.geometry.PointCloud, name: str = "Point Cloud"):
-    """Compute distance statistics between each point and its nearest neighbor.
-    
-    For each point in the point cloud, finds the nearest neighbor (excluding itself)
-    and computes the Euclidean distance. Logs min, max, mean, median, and std.
-    
-    Args:+
-        pcd: The point cloud to analyze.
-        name: Name of the point cloud for logging.
-    
-    Returns:
-        distances: np.ndarray of nearest-neighbor distances for each point.
-    """
-    points = np.asarray(pcd.points)
-    num_points = len(points)
-    
-    if num_points < 2:
-        logger.warning(f"Point cloud '{name}' has fewer than 2 points, cannot compute distances.")
-        return np.array([])
-    
-    # Build KD-tree and query k=2 (first neighbor is the point itself at distance 0)
-    pcd_tree = o3d.geometry.KDTreeFlann(pcd)
-    distances = np.zeros(num_points)
-    
-    for i in range(num_points):
-        [k, idx, dist2] = pcd_tree.search_knn_vector_3d(points[i], 2)
-        # idx[0] is the point itself (distance = 0), idx[1] is the nearest neighbor
-        distances[i] = np.sqrt(dist2[1])
-    
-    logger.info(f"--- Nearest-neighbor distance stats for '{name}' ({num_points} points) ---")
-    logger.info(f"  Min distance:    {distances.min():.4f} mm")
-    logger.info(f"  Max distance:    {distances.max():.4f} mm")
-    logger.info(f"  Mean distance:   {distances.mean():.4f} mm")
-    logger.info(f"  Median distance: {np.median(distances):.4f} mm")
-    logger.info(f"  Std distance:    {distances.std():.4f} mm")
-    logger.info(f"  Total points:    {num_points}")
-    
-    # Histogram of distances in buckets
-    percentiles = np.percentile(distances, [5, 25, 50, 75, 95])
-    logger.info(f"  Percentiles (5/25/50/75/95): "
-                f"{percentiles[0]:.2f} / {percentiles[1]:.2f} / {percentiles[2]:.2f} / "
-                f"{percentiles[3]:.2f} / {percentiles[4]:.2f} mm")
-    logger.info(f"---------------------------------------------------------------")
-    
-    return distances
-
-
-def print_points_per_voxel(pcd, voxel_size):
-    """Print statistics about how many points fall into each voxel.
-    
-    Assigns each point to a voxel index and counts occupancy per voxel.
-    """
-    points = np.asarray(pcd.points)
-    # Compute voxel indices for each point (same logic as Open3D's voxel_down_sample)
-    voxel_min = points.min(axis=0)
-    voxel_indices = ((points - voxel_min) / voxel_size).astype(int)
-    # Convert 3D indices to unique keys
-    _, inverse, counts = np.unique(voxel_indices, axis=0, return_inverse=True, return_counts=True)
-    
-    logger.info(f"--- Voxel occupancy stats (voxel_size={voxel_size}) ---")
-    logger.info(f"  Total points:  {len(points)}")
-    logger.info(f"  Total voxels:  {len(counts)}")
-    logger.info(f"  Min points/voxel:  {counts.min()}")
-    logger.info(f"  Max points/voxel:  {counts.max()}")
-    logger.info(f"  Mean points/voxel: {counts.mean():.2f}")
-    logger.info(f"  Median points/voxel: {np.median(counts):.1f}")
-    logger.info(f"  Std points/voxel:  {counts.std():.2f}")
-    
-    # Histogram: how many voxels have 1 point, 2 points, etc.
-    max_bin = min(counts.max(), 50)  # cap at 50 for readability
-    for n in range(1, max_bin + 1):
-        num_voxels = np.sum(counts == n)
-        if num_voxels > 0:
-            logger.info(f"  Voxels with {n:>3d} point(s): {num_voxels}")
-    if counts.max() > max_bin:
-        num_voxels = np.sum(counts > max_bin)
-        logger.info(f"  Voxels with >{max_bin:>3d} point(s): {num_voxels}")
-    logger.info(f"-----------------------------------------------")
-
-
 def teaserpp_registration(source_raw: o3d.geometry.PointCloud,
                                trans_init: np.ndarray,
         target_raw: o3d.geometry.PointCloud,
@@ -218,19 +130,16 @@ def teaserpp_registration(source_raw: o3d.geometry.PointCloud,
         max_iter_icp: int,
         verbose: str,
         VISUALIZE: bool):
-    
-    # Print point per voxel for the source pcd
-    # print_points_per_voxel(source_raw, VOXEL_SIZE)
 
     frame_size = rough_scale_point_cloud(target_raw) / 7.5 # scale frame size according to target to plot the axis in open3D Draw function
     
     if VISUALIZE:
         mesh_frame_target = o3d.geometry.TriangleMesh.create_coordinate_frame(
-        size=500, origin=[0, 0, 0]
+        size=frame_size, origin=[0, 0, 0]
         )
 
         mesh_frame_world = o3d.geometry.TriangleMesh.create_coordinate_frame(
-        size=1200, origin=[0, 0, 0]
+        size=frame_size*1.3, origin=[0, 0, 0]
     )
 
         mesh_frame_target.transform(target_toworld_transform)
@@ -242,8 +151,11 @@ def teaserpp_registration(source_raw: o3d.geometry.PointCloud,
                                  window_name="Initial State (Source: Blue, Target: Red)", 
                                  size=frame_size, 
                                  target_frame_trans=target_toworld_transform)
-    
-    logger.info(f"Updated initial transformation:\n{trans_init}")
+
+
+    # logger.debug(f"axis aligned:\n{trans_init @ np.eye(4)[:, idx_gravity_axis]}")
+    logger.debug(f"Updated initial transformation:\n{trans_init}")
+
 
     if VISUALIZE:
         draw_registration_result(
@@ -273,7 +185,7 @@ def teaserpp_registration(source_raw: o3d.geometry.PointCloud,
     target_corr = target_xyz[:,corrs_B] # np array of size 3 by num_corrs
 
     num_corrs = source_corr.shape[1]
-    logger.info(f'FPFH generates {num_corrs} putative correspondences.')
+    logger.debug(f'FPFH generates {num_corrs} putative correspondences.')
 
     # visualize the point clouds together with feature correspondences
     if VISUALIZE:
@@ -290,8 +202,8 @@ def teaserpp_registration(source_raw: o3d.geometry.PointCloud,
         o3d.visualization.draw_geometries([source_raw, target_raw, line_set], window_name="FPFH Correspondences")
 
     # TEASER++ registration
-    NOISE_BOUND = VOXEL_SIZE * 2
-    teaser_solver = get_teaser_solver(NOISE_BOUND)
+    NOISE_BOUND = VOXEL_SIZE * 6
+    teaser_solver = get_teaser_solver_test(NOISE_BOUND)
     teaser_solver.solve(source_corr,target_corr)
     solution = teaser_solver.getSolution()
     R_teaser = solution.rotation
@@ -314,14 +226,28 @@ def main(args: argparse.Namespace):
     source_raw = o3d.io.read_point_cloud(args.source)
     target_raw = o3d.io.read_point_cloud(args.target)
 
-    # source_raw.scale(0.001, center=(0, 0, 0)) # scale to m
+    # The point clouds are entered in meters, so we scale them to millimiters
+    source_raw.scale(1000, center=(0, 0, 0)) # scale to mm
+    target_raw.scale(1000, center=(0, 0, 0)) # scale to mm
+
+    # Calculate the diagonal length of the target point cloud bounding box and the RMSE as percentage of it
+    max_point = np.max(np.asarray(target_raw.points), axis=0)
+    min_point = np.min(np.asarray(target_raw.points), axis=0)
+    target_diagonal_length = np.linalg.norm(max_point - min_point)
+    logger.info(f"Target point cloud diagonal length: {target_diagonal_length:.3f} mm")
+
+    # Calculate the diagonal length of the source point cloud bounding box and the RMSE as percentage of it
+    max_point = np.max(np.asarray(source_raw.points), axis=0)
+    min_point = np.min(np.asarray(source_raw.points), axis=0)
+    source_diagonal_length = np.linalg.norm(max_point - min_point)
+    logger.info(f"Source point cloud diagonal length: {source_diagonal_length:.3f} mm")
 
     VOXEL_SIZE = args.voxel_size
     VISUALIZE = args.viz
     frame_size = rough_scale_point_cloud_from_file(args.target) / 7.5 # scale frame size according to target to plot the axis in open3D Draw function
 
     source_raw.paint_uniform_color([1.0, 0.706, 0.0]) # show source in yellow
-    target_raw.paint_uniform_color([0.0, 0.0, 1.0]) # show target in green
+    target_raw.paint_uniform_color([0.0, 0.0, 1.0]) # show target in blue
 
     # Initiate timer
     start_time = time.time()
@@ -341,47 +267,56 @@ def main(args: argparse.Namespace):
     r[2] = 0 # For the real dataset the z-axis is considered the yaw angle
     trans_init[:3, :3] = scipy.spatial.transform.Rotation.from_euler('xyz', r).as_matrix()
     trans_init[:3, 3] = 0
-    logger.info(f"Source Initial Guess: \n{trans_init}")
-
-    rot_180 = scipy.spatial.transform.Rotation.from_euler('z', 180, degrees=True).as_matrix()
-    logger.info(f"rotation 180 around z-axis:\n{rot_180}")
-    trans_init[:3, :3] = rot_180 @ trans_init[:3, :3]
-
-    # trans_init = np.eye(4) # Loads the source without any initial guess to test the robustness of the algorithm for this case
+    # logger.debug(f"Source Initial Guess: \n{trans_init}")
 
     # If the target point cloud is not aligned with the world frame, then we need to apply it's known transformation 
     # (Lidar to World) to align so the algorithm can estimate the transformation in the world reference frame.
     target_gt_transform_file = args.target.replace('.ply', '_gt_transform.json').replace('.pcd', '_gt_transform.json')
     if not os.path.exists(target_gt_transform_file):
         target_gt_transform_file = args.target.replace('.ply', pose_sufix).replace('.pcd', pose_sufix)
+    
     try:
         with open(target_gt_transform_file, 'r') as file:
             target_toworld_transform = np.array(json.load(file)["H"])
-            logger.info(f"Target Ground Truth transform: \n{target_toworld_transform}")
-    except FileNotFoundError:
-        logger.error(f"The file '{target_gt_transform_file}' was not found.")
+            logger.debug(f"Target Ground Truth transform: \n{target_toworld_transform}")
+    except:
+        logger.warning(f"The file '{target_gt_transform_file}' was not found, assuming identity transform for target point cloud.")
+        target_toworld_transform = np.eye(4)
+    
+    if not os.path.exists(target_gt_transform_file):
+        logger.warning(f"No ground truth transform file found for target point cloud. Assuming identity transform.")
+        target_toworld_transform = np.eye(4)
     
     target_raw.transform(target_toworld_transform) 
-
-    # Filter out source points that are too far from its center of mass to speed up the registration and avoid outliers
-    source_raw = filter_points_far_from_center(source_raw, 12)
 
     T_teaser, teaser_solver, target_down_nb_points, source_down_nb_points, num_corrs = teaserpp_registration(source_raw, trans_init, 
                                                              target_raw, target_toworld_transform, 
                                                              VOXEL_SIZE, args.max_iter_icp, args.verbose, VISUALIZE)
-    logger.info(f"Estimated transformation:\n{T_teaser @ trans_init}")
+    
+    logger.info("\n"*2+f"Estimated Teaser++ transformation (mm):\n{T_teaser @ trans_init}"+"\n"*2)
 
-    save_reg_poses(T_teaser @ trans_init, args.source, f'teaser_estimated_poses_{int(float(VOXEL_SIZE)*1000)}/')
-
-    # Load Ground Thruth transformation from .json file
-    scan_gt_json = source_initial_guess_file
+    # Convert transaltion back to meters
+    T_teaser_meters = copy.deepcopy(T_teaser)
+    T_teaser_meters[:3, 3] /= 1000  # Convert translation from mm to m
 
     teaser_reg_time = time.time() - start_time
-    calculate_errors(None, T_teaser @ trans_init, scan_gt_json, source_dir, teaser_reg_time, source_raw, target_raw, f'/teaser_metrics_{int(float(VOXEL_SIZE)*1000)}/')
+
+    if args.output is not None:
+        # Save the estimated Teaser++ transformation
+        output_estimated_poses_dir = os.path.join(args.output, f'Voxel{int(VOXEL_SIZE)}/Teaser_estimated_poses_{int(VOXEL_SIZE)}/')
+        save_estimated_poses(T_teaser_meters @ trans_init, args.source, output_estimated_poses_dir)
+
+        # Load Ground Thruth transformation from .json file
+        scan_gt_json = source_initial_guess_file
+        teaser_metrics_dir = os.path.join(args.output, f'Voxel{int(VOXEL_SIZE)}/Teaser_metrics_{int(VOXEL_SIZE)}/')
+        # Calculate Teaser++ errors
+        logger.info(f"T_teaser: \n{T_teaser}")
+        logger.info(f"trans_init: \n{trans_init}")
+        calculate_errors(args, None, T_teaser @ trans_init, VOXEL_SIZE, scan_gt_json, teaser_reg_time, source_raw, target_raw, teaser_metrics_dir)
 
     if args.refine_registration:
         ref_voxel_size = args.refinement_voxel_size if args.refinement_voxel_size is not None else VOXEL_SIZE
-        logger.info(f"Loading scan at refinement resolution ({ref_voxel_size})...")
+        logger.debug(f"Loading scan at refinement resolution ({ref_voxel_size})...")
         source_refined, target_refined = load_point_clouds_files_for_refinement(
         source_ply=args.source,
         target_ply=args.target,
@@ -389,9 +324,9 @@ def main(args: argparse.Namespace):
         trans_init=trans_init
         )
          # local refinement using ICP Point to Plane
-        icp_sol = refine_registration(source_refined, target_refined, ref_voxel_size*2, T_teaser, max_iteration=args.max_iter_icp, use_generalized_icp=args.use_gicp)
+        icp_sol = refine_registration(source_refined, target_refined, ref_voxel_size * 2, T_teaser, max_iteration=args.max_iter_icp, use_generalized_icp=args.use_gicp)
         T_icp = icp_sol.transformation
-        logger.info(f"Estimated transformation after refinement:\n{T_icp}")
+        logger.debug(f"Estimated transformation after refinement:\n{T_icp}")
 
         # visualize the registration after ICP refinement
         if VISUALIZE:
@@ -403,11 +338,20 @@ def main(args: argparse.Namespace):
         # Computing elapsed time to run Teaser++ registration
         end_time = time.time()
         registration_total_time = end_time - start_time
-        logger.info(f"Elapsed time for TEASER++ Registration: {registration_total_time:.4f} seconds")
+        logger.debug(f"Elapsed time for TEASER++ Registration: {registration_total_time:.4f} seconds")
 
         ## METRICS ##
         # Calculate and save registration metrics 
-        registration_metrics(target_raw, source_raw, target_down_nb_points, source_down_nb_points, teaser_solver, icp_sol, trans_init, num_corrs, VOXEL_SIZE * 2, registration_total_time, args)
+        if args.output is not None:
+            registration_metrics_dir = os.path.join(args.output, f'Voxel{int(args.voxel_size)}/Ref_Voxel{int(args.refinement_voxel_size)}')
+            registration_metrics(target_raw, source_raw, target_down_nb_points, source_down_nb_points, teaser_solver, icp_sol, trans_init, num_corrs, VOXEL_SIZE * 2, registration_total_time, args, registration_metrics_dir)
+
+            # Convert transaltion back to meters
+            T_icp_meters = copy.deepcopy(T_icp)
+            T_icp_meters[:3, 3] /= 1000  # Convert translation from mm to m
+
+            estimated_poses_dir = os.path.join(args.output, f'Voxel{int(args.voxel_size)}/Ref_Voxel{int(args.refinement_voxel_size)}/Estimated_Poses/')
+            save_estimated_poses(T_icp_meters @ trans_init, args.source, estimated_poses_dir) # Save poses in meters
 
 
 if __name__ == "__main__":
@@ -417,6 +361,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Teaser++ registration")
     parser.add_argument("--source", type=str, help="source file path", required=True)
     parser.add_argument("--target", type=str, help="target file path", required=True)
+
+    parser.add_argument(
+        "--start-index", type=int, help="start index for processing files in a directory", default=0
+    )
+
+    parser.add_argument(
+        "--end-index", type=int, help="end index for processing files in a directory", default=None
+    )
 
     parser.add_argument(
         "--voxel-size", type=float, help="voxels size for downsampling", default=30
@@ -458,6 +410,13 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "--output",
+        "-o",
+        default=None,
+        help="Output JSON file to save detailed results",
+    )
+
+    parser.add_argument(
         "-v",
         "--verbose",
         type=str,
@@ -474,27 +433,46 @@ if __name__ == "__main__":
 
     input_args = parser.parse_args()
     # Set logging level based on user selection
-    setup_logging(getattr(logging, input_args.verbose))
+    if input_args.output is not None:
+        if not os.path.exists(input_args.output):
+            os.makedirs(input_args.output)
+        setup_logging(getattr(logging, input_args.verbose), filename=input_args.output + f"/Voxel{int(input_args.voxel_size)}.log", filemode="w")
+    else:
+        setup_logging(getattr(logging, input_args.verbose))
     logger.info(f"Input arguments: {input_args}")
     
     if os.path.isdir(input_args.source):
-       # Create a list with only the supported point cloud files for registration
-       pcl_files = [f for f in os.listdir(input_args.source) if f.endswith('.ply') or f.endswith('.pcd')]
-    #    file = []
-    #    for i in range(0,28):
-    #         file.append(f"{i}.ply")
-    #    logger.info(f"pcl_files: {file}")
-    #    pcl_files = file
-       number_of_files = len(pcl_files)
+        # Create a list with only the supported point cloud files for registration
+        pcl_files = [f for f in os.listdir(input_args.source) if f.endswith('.ply') or f.endswith('.pcd')]
+        number_of_files = len(pcl_files)
+        pcl_files.sort(key=lambda x: int(x.split('.')[0])) # sort files numerically to ensure consistent order
+        for f in pcl_files:
+           guess_file = f.replace('.ply', '.json').replace('.pcd', '.json')
+           if not os.path.exists(os.path.join(input_args.source, guess_file)):
+               raise FileNotFoundError(f"Missing JSON file for {f}.")
+           
+        if input_args.start_index < 0 or input_args.start_index >= number_of_files:
+            raise ValueError(f"Start index {input_args.start_index} is out of bounds for the number of files ({number_of_files}).")
 
-       logger.info(f"Source is a directory, applying TEASER++ registration to all its {number_of_files} files.")
-       source_dir = copy.deepcopy(input_args.source)
-       count = 1
-       for filename in pcl_files:
-            source_file = os.path.join(source_dir, filename)
-            logger.info(f"TEASER++ registration to: {source_file}. File ({count} / {number_of_files})")
-            input_args.source = source_file
-            main(input_args)
+        if input_args.end_index is not None:
+            if input_args.end_index < 0 or input_args.end_index > number_of_files:
+                raise ValueError(f"End index {input_args.end_index} is out of bounds for the number of files ({number_of_files}).")
+            end = input_args.end_index
+        elif input_args.end_index is None:
+            end = number_of_files
+
+
+        logger.debug(f"Source is a directory, applying TEASER++ registration from file {input_args.start_index} to {end}.")
+        source_dir = copy.deepcopy(input_args.source)
+        count = 1
+        for filename in pcl_files[input_args.start_index:end]:
+            if (count-1)%10 == 0:
+                logger.info(f"Skipping file {filename}")
+            else:
+                source_file = os.path.join(source_dir, filename)
+                logger.info(f"TEASER++ registration to: {source_file}. File ({count} / {number_of_files})")
+                input_args.source = source_file
+                main(input_args)
             count += 1
     else:
         source_dir, _ = os.path.split(input_args.source)

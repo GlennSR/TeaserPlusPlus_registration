@@ -139,11 +139,11 @@ def print_point_cloud_info(
     num_points = len(pcd.points)
     aabb = pcd.get_axis_aligned_bounding_box()
     obb = pcd.get_minimal_oriented_bounding_box()
-    logging.info(f"Point Cloud '{name}':")
-    logging.info(f"\tNumber of points: {num_points}")
-    logging.info(f"\tHas normals: {pcd.has_normals()}")
-    logging.info(f"\tPoint cloud size: {pcd.get_max_bound() - pcd.get_min_bound()}")
-    logging.info(
+    logging.debug(f"Point Cloud '{name}':")
+    logging.debug(f"\tNumber of points: {num_points}")
+    logging.debug(f"\tHas normals: {pcd.has_normals()}")
+    logging.debug(f"\tPoint cloud size: {pcd.get_max_bound() - pcd.get_min_bound()}")
+    logging.debug(
         f"\tAxis-Aligned Bounding Box: min {aabb.min_bound}, max {aabb.max_bound}"
     )
-    logging.info(f"\tOriented Bounding Box: center {obb.center}, extent {obb.extent}")
+    logging.debug(f"\tOriented Bounding Box: center {obb.center}, extent {obb.extent}")

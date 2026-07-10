@@ -129,6 +129,9 @@ def load_point_cloud(
         pcd = copy.deepcopy(ply)
     if not pcd.has_points():
         raise ValueError(f"Point cloud {ply} is empty")
+    
+    # Convert to mm
+    pcd.scale(1000, center=(0, 0, 0)) # scale to mm
 
     # Downsample if requested
     if voxel_size > 0:
