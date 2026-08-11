@@ -413,7 +413,7 @@ if __name__ == "__main__":
         "--output",
         "-o",
         default=None,
-        help="Output JSON file to save detailed results",
+        help="Output JSON folder to save detailed results",
     )
 
     parser.add_argument(
