@@ -39,7 +39,7 @@ How to use `teaserpp_fpfh.py`
 - Preprocess (voxel downsample + normals + FPFH)
 - Find putative FPFH correspondences (K-NN + mutual filter)
 - Run TEASER++ on the correspondences to get a robust global pose
-- Run ICP point-to-plane refinement
+- Run ICP/GICP point-to-plane refinement (Activated with --refine-registration option)
 - Optionally visualize intermediate and final results
 
 Optional:
@@ -50,6 +50,9 @@ python3 teaserpp/scripts/teaserpp_fpfh.py \
   --source "<SOURCE_PATH>" \
   --target "<TARGET_PATH>" \
   --voxel-size 30 \
+  --refine-registration \
+  --use-gicp \
+  --refinement-voxel-size 150 \
   --max_iter_icp 2000 \
   --noise-std 0.01 \
   --viz True \
@@ -60,7 +63,12 @@ Options:
 
 - `--source` Path to source point cloud (.ply or .pcd) (required)
 - `--target` Path to target point cloud (required)
+- `--start-index` Start index of source to begin registration (default: 0) (Optional)
+- `--end-index` End index of the source to end the registration if you want to set (default: None) (Optional)
 - `--voxel-size` Voxel size used for downsampling (default: 30)
+- `--refine-registration` Activates the GICP/ICP refinement step after Teaser++ global estimation
+- `--use-gicp` Use GICP instead of ICP 
+- `--refinement-voxel-size` Voxel size used for the refinement step (default: None)
 - `--max_iter_icp` Max iterations for ICP (default: 2000)
 - `--noise-std` Standard deviation of Gaussian noise added to source for testing (default: 0.0)
 - `--viz` Enable Open3D visualization (True/False)
